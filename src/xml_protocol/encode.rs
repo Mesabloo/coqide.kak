@@ -37,7 +37,7 @@ impl ProtocolCall {
     pub fn encode(self) -> String {
         match self {
             Init(val) => format!("<call val=\"Init\">{}</call>", val.encode()),
-            Quit => "<call val=\"Quit\"/>".to_string(),
+            Quit => format!("<call val=\"Quit\">{}</call>", Unit.encode()),
         }
     }
 }

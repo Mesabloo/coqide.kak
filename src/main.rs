@@ -4,7 +4,10 @@
 use crate::coqtop::slave::{IdeSlave, SlaveState};
 use async_net::{TcpListener, TcpStream};
 use futures::join;
-use signal_hook::{consts::SIGUSR1, iterator::Signals};
+use signal_hook::{
+    consts::{SIGINT, SIGUSR1},
+    iterator::Signals,
+};
 use std::{env, io};
 
 mod coqtop;
@@ -13,37 +16,26 @@ mod xml_protocol;
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
+    env_logger::builder()
+        .format_level(true)
+        .format_timestamp_millis()
+        .format_indent(Some(4))
+        .init();
+
     let cli_args = env::args().collect::<Vec<_>>();
 
-    if cli_args.len() != 3 {
-        eprintln!("coqide-kak requires two positional arguments in this order: <KAK_SESSION> <KAK_COMMAND_BUFFER>.");
+    if cli_args.len() != 4 {
+        log::error!("coqide-kak requires two positional arguments in this order: <KAK_SESSION> <KAK_BUFFER> <KAK_COMMAND_FILE>.");
         std::process::exit(exitcode::USAGE);
     }
 
-    let main_r = new_server("127.0.0.1:55000");
-    let main_w = new_server("127.0.0.1:55001");
-    let control_r = new_server("127.0.0.1:55002");
-    let control_w = new_server("127.0.0.1:55003");
-    let proc = coqtop::spawn(&[55000, 55001, 55002, 55003]);
-
-    let (main_r, main_w, control_r, control_w, proc) =
-        join!(main_r, main_w, control_r, control_w, proc);
-    let (main_r, main_w, control_r, control_w, proc) =
-        (main_r?, main_w?, control_r?, control_w?, proc?);
-
-    let mut slave = IdeSlave::new(
-        main_r,
-        main_w,
-        control_r,
-        control_w,
-        proc,
-        SlaveState::Connected,
-    );
+    let mut slave = IdeSlave::init(&[55000, 55001, 55002, 55003]).await?;
 
     let kak_session = cli_args[1].clone();
-    let kak_commands = cli_args[2].clone();
+    let kak_buffer = cli_args[2].clone();
+    let kak_commands = cli_args[3].clone();
 
-    let mut signals = Signals::new(&[SIGUSR1])?;
+    let mut signals = Signals::new(&[SIGUSR1, SIGINT])?;
     for sig in signals.forever() {
         // TODO: process SIGUSR1 as "received a message from kakoune", in buffer `cli_args[2]`
         //
@@ -51,20 +43,16 @@ async fn main() -> io::Result<()> {
         // - Try parse into a `KakCommand`
         // - If command, execute on `slave` and `kak_session`
         // - Keep waiting
-        println!("Received {:?}", sig);
+        log::debug!("Received {:?}", sig);
+
+        if sig == SIGINT {
+            slave.quit().await?;
+
+            break;
+        }
     }
 
-    Ok(())
-}
-
-/// Create a new TCP server and return its socket
-async fn new_server(addr: &str) -> io::Result<Box<TcpStream>> {
-    let listener = TcpListener::bind(addr).await?;
-    let (socket, addr) = listener.accept().await?;
-
-    eprintln!("Connected to {}", addr);
-
-    Ok(Box::new(socket))
+    std::process::exit(exitcode::OK);
 }
 
 /*

@@ -1,6 +1,6 @@
 declare-option -docstring "
   The PID of the coqide-kak process used to interact with kakoune.
-" -hidden str coqide_kak_pid
+" -hidden str coqide_pid
 
 declare-option -docstring "
   The path to the pipe used to control the `coqide-kak` process.
@@ -8,27 +8,40 @@ declare-option -docstring "
   This should /NOT/ be modified while the process is running, unless you want
   junk files on your system (putting them in `/tmp` should solve at least
   half of the problem).
-" -hidden str coqide_kak_pipe "/tmp/coqide-%val{session}-pipe"
+" -hidden str coqide_pipe "/tmp/coqide-%val{session}-pipe"
+
+declare-option -docstring "
+  Command to launch `coqide-kak`.
+" str coqide_command "coqide-kak"
 
 define-command -docstring "
   Start `coqide-kak` for the current buffer.  
 " -params 0 coqide-start %{
   # TODO: handle when multiple buffers try to use `coqide-kak`
-  evaluate-commands %sh{
-    mkfifo $kak_opt_coqide_kak_pipe
-    
-    if command coqide-kak 2>/dev/null; then
-      coqide-kak $kak_session $kak_buffile $kak_opt_coqide_kak_pipe 2&>1 >/dev/null &
-      # NOTE: we are ignoring the output, but perhaps we would like to accumulate it
-      #       to allow displaying it to the user (when requested)
-      echo "set-option buffer coqide_kak_pid '$!'"
-    else
-      echo "echo -debug -markup 'Cannot find command \`coqide-kak\` in the PATH'"
-    fi
+  set-option global coqide_pid %sh{
+    mkfifo $kak_opt_coqide_pipe
+
+    $kak_opt_coqide_command "$kak_session" "$kak_buffile" "$kak_opt_coqide_pipe" </dev/null &>/dev/null &
+    echo "$!"
+    # NOTE: we are ignoring the output, but perhaps we would like to accumulate it
+    #       to allow displaying it to the user (when requested)
   }
 
-  hook -once buffer BufClose "%val{buffile}" %{
-    coqide-stop
+  evaluate-commands %sh{
+    echo "
+      hook -once buffer=$kak_buffile BufClose .* %{
+        coqide-stop
+      }
+    "
+  }
+
+  define-command -docstring "
+    Sends a command to the coqide-kak process.
+  " -hidden -params 1 coqide-send-to-process %{
+    try %sh {
+      echo "$1" > "$kak_opt_coqide_pipe"
+      kill -USR1 "$kak_opt_coqide_pid"
+    }
   }
 
   define-command -docstring "
@@ -37,8 +50,8 @@ define-command -docstring "
     Also deletes the control pipe.
   " -params 0 coqide-stop %{
     nop %sh{
-      kill -INT $kak_opt_coqide_kak_pid
-      rm $kak_opt_coqide_kak_pipe
+      kill -INT $kak_opt_coqide_pid
+      rm $kak_opt_coqide_pipe
     }
   }
 }

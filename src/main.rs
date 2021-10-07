@@ -29,7 +29,7 @@ async fn main() -> io::Result<()> {
         std::process::exit(exitcode::USAGE);
     }
 
-    let mut slave = IdeSlave::init(&[55000, 55001, 55002, 55003]).await?;
+    let mut slave = IdeSlave::init().await?;
 
     let kak_session = cli_args[1].clone();
     let kak_buffer = cli_args[2].clone();

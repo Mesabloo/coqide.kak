@@ -12,7 +12,16 @@ pub static COQTOP: &str = "coqidetop";
 /// - `ports[1]` is the port of the main writable channel, used to send requests to `COQTOP`
 /// - `ports[2]` ???
 /// - `ports[3]` ???
-pub async fn spawn(ports: &[u32; 4]) -> io::Result<Child> {
+pub async fn spawn(ports: [u16; 4]) -> io::Result<Child> {
+    log::debug!(
+        "Connecting `{}` process to ports {}:{}:{}:{}",
+        COQTOP,
+        ports[0],
+        ports[1],
+        ports[2],
+        ports[3]
+    );
+
     Command::new(COQTOP)
         .arg("-main-channel")
         .arg(format!("127.0.0.1:{}:{}", ports[0], ports[1]))

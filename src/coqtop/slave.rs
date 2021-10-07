@@ -5,34 +5,36 @@ use futures::{join, AsyncWriteExt};
 use std::io;
 
 pub struct IdeSlave {
-    main_r: Box<TcpStream>,
-    main_w: Box<TcpStream>,
-    control_r: Box<TcpStream>,
-    control_w: Box<TcpStream>,
+    main_r: TcpStream,
+    main_w: TcpStream,
+    control_r: TcpStream,
+    control_w: TcpStream,
     proc: Child,
     state: SlaveState,
 }
 
-/// Create a new TCP server and return its socket
-async fn new_server(addr: String) -> io::Result<Box<TcpStream>> {
-    let listener = TcpListener::bind(addr).await?;
-    let (socket, _addr) = listener.accept().await?;
-
-    Ok(Box::new(socket))
-}
-
 impl IdeSlave {
-    pub async fn init(ports: &[u32; 4]) -> io::Result<Self> {
-        let main_r = new_server(format!("127.0.0.1:{}", ports[0]));
-        let main_w = new_server(format!("127.0.0.1:{}", ports[1]));
-        let control_r = new_server(format!("127.0.0.1:{}", ports[2]));
-        let control_w = new_server(format!("127.0.0.1:{}", ports[3]));
+    pub async fn init() -> io::Result<Self> {
+        let listener1 = TcpListener::bind("127.0.0.1:0").await?;
+        let listener2 = TcpListener::bind("127.0.0.1:0").await?;
+        let listener3 = TcpListener::bind("127.0.0.1:0").await?;
+        let listener4 = TcpListener::bind("127.0.0.1:0").await?;
 
-        let proc = coqtop::spawn(ports);
+        let main_r = listener1.accept();
+        let main_w = listener2.accept();
+        let control_r = listener3.accept();
+        let control_w = listener4.accept();
+
+        let proc = coqtop::spawn([
+            listener1.local_addr()?.port(),
+            listener2.local_addr()?.port(),
+            listener3.local_addr()?.port(),
+            listener4.local_addr()?.port(),
+        ]);
 
         let (main_r, main_w, control_r, control_w, proc) =
             join!(main_r, main_w, control_r, control_w, proc);
-        let (main_r, main_w, control_r, control_w, proc) =
+        let ((main_r, _), (main_w, _), (control_r, _), (control_w, _), proc) =
             (main_r?, main_w?, control_r?, control_w?, proc?);
 
         log::debug!(

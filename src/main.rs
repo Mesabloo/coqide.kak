@@ -41,7 +41,7 @@ async fn main() -> io::Result<()> {
         }
     }
     if !Path::new(&log_path).exists() {
-      File::create(log_path)?;
+        File::create(log_path)?;
     }
 
     // Setup logger
@@ -69,6 +69,7 @@ async fn main() -> io::Result<()> {
         kak_buffer
     )
     .await?;
+    proc.status().await?;
     // NOTE: let the process die on its own
 
     log::debug!("Waiting for signals...");

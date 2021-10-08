@@ -38,10 +38,6 @@ declare-option -docstring "
   The face used to highlight can be customised with the option `coqide_processed`.
 " -hidden range-specs coqide_processed_range 
 
-declare-option -docstring "
-  The name of the CoqIDE logging buffer.
-" -hidden str coqide_log_buffer "*coqide-log*"
-
 define-command -docstring "
   Start `coqide-kak` for the current buffer.  
 " -params 0 coqide-start %{
@@ -55,16 +51,6 @@ define-command -docstring "
 
   nop %sh{
     mkdir -p "$kak_opt_coqide_pipe"
-    
-  #   mkfifo "$kak_opt_coqide_pipe/goal"
-  #   mkfifo "$kak_opt_coqide_pipe/result"
-  #   mkfifo "$kak_opt_coqide_pipe/log"
-  #   mkfifo "$kak_opt_coqide_pipe/cmd"
-
-  #   exec 3<> "$kak_opt_coqide_pipe/goal"
-  #   exec 3<> "$kak_opt_coqide_pipe/result"
-  #   exec 3<> "$kak_opt_coqide_pipe/log"
-  #   exec 3<> "$kak_opt_coqide_pipe/cmd"
   }
 
   evaluate-commands %sh{
@@ -91,8 +77,6 @@ define-command -docstring "
   }
 
   add-highlighter -override buffer/coqide_processed ranges coqide_processed_range
-
-  coqide-send-to-process %{init}
 }
 
 define-command -docstring "
@@ -172,14 +156,7 @@ define-command -docstring "
 define-command -docstring "
   Dump the log in a specific buffer for user examination.
 " -params 0 coqide-dump-log %{
-  try %{
-    evaluate-commands -draft %{
-      buffer %opt{coqide_log_buffer}
-      delete-buffer! %opt{coqide_log_buffer}
-    }
-  }
-  
-  edit -debug -fifo "%opt{coqide_pipe}/log" -scroll %opt{coqide_log_buffer}
+  edit! -debug -readonly "%opt{coqide_pipe}/log"
 }
 
 define-command -docstring "

@@ -3,16 +3,19 @@
 #![feature(path_try_exists)]
 
 use crate::coqtop::slave::IdeSlave;
+use async_process::{Command, Stdio};
+use async_std::io::WriteExt;
 use kak_protocol::processor::CommandProcessor;
 use signal_hook::{
     consts::{SIGINT, SIGUSR1},
     iterator::Signals,
 };
-use std::{env, io, path::Path};
+use std::{env, fs::File, io, path::Path};
 use unix_named_pipe as fifos;
 
 mod coqtop;
 mod kak_protocol;
+mod logger;
 mod xml_protocol;
 
 #[async_std::main]
@@ -27,31 +30,46 @@ async fn main() -> io::Result<()> {
     let kak_buffer = cli_args[2].clone();
     let kak_pipe_dirs = cli_args[3].clone();
 
-    env_logger::builder()
-        .format_level(true)
-        .format_timestamp_millis()
-        .format_indent(Some(4))
-        // .target(env_logger::Target::Pipe(Box::new(File::open(format!(
-        //     "{}/log",
-        //     &kak_commands
-        // ))?)))
-        .init();
-
-    log::debug!("Creating FIFO pipes to interact with Kakoune");
-
+    // Setup pipes
     let goal_path = format!("{}/goal", &kak_pipe_dirs);
     let result_path = format!("{}/result", &kak_pipe_dirs);
     let log_path = format!("{}/log", &kak_pipe_dirs);
     let cmd_path = format!("{}/cmd", &kak_pipe_dirs);
-
-    for path in [goal_path, result_path, log_path, cmd_path] {
+    for path in [goal_path, result_path, cmd_path] {
         if !Path::new(&path).exists() {
             fifos::create(path, None)?;
         }
     }
+    if !Path::new(&log_path).exists() {
+      File::create(log_path)?;
+    }
 
-    let slave = IdeSlave::init(kak_buffer).await?;
-    let mut kak_processor = CommandProcessor::init(kak_pipe_dirs, kak_session, slave).await?;
+    // Setup logger
+    let _handle = logger::init(format!("{}/log", &kak_pipe_dirs))?;
+
+    // Setup IDE slave and command processor
+    let slave = IdeSlave::init(kak_buffer.clone()).await?;
+    let mut kak_processor =
+        CommandProcessor::init(kak_pipe_dirs, kak_session.clone(), slave).await?;
+
+    // Tell Kakoune to send use an `init` message
+    let mut proc = Command::new("kak")
+        .arg("-p")
+        .arg(kak_session)
+        .kill_on_drop(true)
+        .stdin(Stdio::piped())
+        .spawn()?;
+    write!(
+        proc.stdin.as_mut().unwrap(),
+        r#"
+        evaluate-commands -buffer '{}' %{{
+          coqide-send-to-process %{{init}}
+        }}
+        "#,
+        kak_buffer
+    )
+    .await?;
+    // NOTE: let the process die on its own
 
     log::debug!("Waiting for signals...");
     let mut signals = Signals::new(&[SIGUSR1, SIGINT])?;

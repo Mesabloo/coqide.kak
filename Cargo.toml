@@ -14,6 +14,6 @@ signal-hook = { version = "0.3.10", features = ["iterator"] }
 exitcode = "1.1.2"
 async-process = "1.2.0"
 log = "0.4.14"
-env_logger = "0.9.0"
+log4rs = "1.0.0"
 nom = "7.0.0"
 unix-named-pipe = "0.2.0"

@@ -56,9 +56,22 @@ define-command -docstring "
   nop %sh{
     mkdir -p "$kak_opt_coqide_pipe"
     
-    mkfifo "$kak_opt_coqide_pipe/goal"
-    mkfifo "$kak_opt_coqide_pipe/result"
-    mkfifo "$kak_opt_coqide_pipe/log"
+  #   mkfifo "$kak_opt_coqide_pipe/goal"
+  #   mkfifo "$kak_opt_coqide_pipe/result"
+  #   mkfifo "$kak_opt_coqide_pipe/log"
+  #   mkfifo "$kak_opt_coqide_pipe/cmd"
+
+  #   exec 3<> "$kak_opt_coqide_pipe/goal"
+  #   exec 3<> "$kak_opt_coqide_pipe/result"
+  #   exec 3<> "$kak_opt_coqide_pipe/log"
+  #   exec 3<> "$kak_opt_coqide_pipe/cmd"
+  }
+
+  evaluate-commands %sh{
+    if ! type "$kak_opt_coqide_command" &>/dev/null; then
+      echo "fail 'coqide: Unknown command \"$kak_opt_coqide_command\"'"
+      exit 1
+    fi
   }
   
   set-option buffer coqide_pid %sh{
@@ -151,7 +164,7 @@ define-command -docstring "
   Sends a command to the coqide-kak process.
 " -hidden -params 1 coqide-send-to-process %{
   nop %sh{
-    echo "$1" > "$kak_opt_coqide_pipe"
+    echo "$1" >> "$kak_opt_coqide_pipe/cmd"
     kill -USR1 "$kak_opt_coqide_pid"
   }
 }
@@ -175,6 +188,7 @@ define-command -docstring "
   Also deletes the control pipe.
 " -params 0 coqide-stop %{
   remove-hooks buffer coqide
+  nop %sh{ exec 3>&- }
 
   nop %sh{
     kill -INT "$kak_opt_coqide_pid"

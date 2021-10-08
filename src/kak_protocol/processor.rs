@@ -1,19 +1,23 @@
 use super::command::{Command, CommandKind};
 use crate::coqtop::slave::IdeSlave;
-use async_std::fs::File;
 use futures::io::BufReader;
-use std::io;
+use std::{fs::File, io, pin::Pin};
+use unix_named_pipe as fifos;
 
 pub struct CommandProcessor {
-    pipe: BufReader<File>,
+    pipe: File,
     session: String,
     ide_slave: IdeSlave,
 }
 
 impl CommandProcessor {
-    pub async fn init(pipe_path: String, session: String, slave: IdeSlave) -> io::Result<Self> {
+    pub async fn init(pipes_path: String, session: String, slave: IdeSlave) -> io::Result<Self> {
+        log::debug!("Opening command pipe '{}/cmd'", pipes_path);
+        let pipe = fifos::open_read(format!("{}/cmd", pipes_path))?;
+        log::debug!("Pipe opened!");
+
         Ok(CommandProcessor {
-            pipe: BufReader::new(File::open(pipe_path).await?),
+            pipe,
             session,
             ide_slave: slave,
         })
@@ -25,17 +29,15 @@ impl CommandProcessor {
         Ok(())
     }
 
-    pub async fn process_command<'a>(&'a self) -> io::Result<Command<'a>> {
+    pub async fn process_command<'a>(&'a mut self) -> io::Result<Command<'a>> {
+        let kind = CommandKind::parse_from(Pin::new(&mut self.pipe)).await?;
+
+        log::debug!("Received command '{:?}' through control pipe", kind);
+
         Ok(Command {
             session: &self.session,
-            slave: &self.ide_slave,
-            kind: parse_command(&self.pipe).await,
+            slave: &mut self.ide_slave,
+            kind,
         })
     }
-}
-
-use CommandKind::*;
-
-async fn parse_command(pipe: &BufReader<File>) -> CommandKind {
-  Init
 }

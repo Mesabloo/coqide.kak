@@ -1,4 +1,7 @@
-use crate::{coqtop, xml_protocol::types::{ProtocolCall, ProtocolValue}};
+use crate::{
+    coqtop,
+    xml_protocol::types::{ProtocolCall, ProtocolValue},
+};
 use async_net::{TcpListener, TcpStream};
 use async_process::Child;
 use futures::{join, AsyncWriteExt};
@@ -43,7 +46,7 @@ impl IdeSlave {
 
         let (main_r, main_w, control_r, control_w, proc) =
             join!(main_r, main_w, control_r, control_w, proc);
-        let ((main_r, _), (mut main_w, _), (control_r, _), (control_w, _), proc) =
+        let ((main_r, _), (main_w, _), (control_r, _), (control_w, _), proc) =
             (main_r?, main_w?, control_r?, control_w?, proc?);
 
         log::debug!(
@@ -60,6 +63,11 @@ impl IdeSlave {
             proc,
             state: SlaveState::Connected,
         })
+    }
+
+    pub async fn send_message(&mut self, c: ProtocolCall) -> io::Result<()> {
+        log::debug!("Sending call '{:?}' to `{}`", c, coqtop::COQTOP);
+        self.main_w.write_all(c.encode().as_bytes()).await
     }
 
     pub async fn quit(mut self) -> io::Result<()> {

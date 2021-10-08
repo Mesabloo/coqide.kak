@@ -17,7 +17,7 @@ impl ProtocolValue {
             Int(i) => format!("<int>{}</int>", i),
             Boolean(b) => format!("<bool val=\"{}\"/>", b),
             Pair(box v1, box v2) => format!("<pair>{}{}</pair>", v1.encode(), v2.encode()),
-            Optional(box opt) => opt.map_or_else(
+            Optional(opt) => opt.map_or_else(
                 || "<option val=\"none\"/>".to_string(),
                 |val| format!("<option val=\"some\">{}</option>", val.encode()),
             ),

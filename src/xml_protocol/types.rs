@@ -15,7 +15,7 @@ pub enum ProtocolValue {
     /// `<pair>'v1''v2'</pair>` is a pair containing both values `v1` and `v2`
     Pair(Box<ProtocolValue>, Box<ProtocolValue>),
     /// `<option val="none"/>` and `<option val="some">v1</option>` represents optional values
-    Optional(Box<Option<ProtocolValue>>),
+    Optional(Option<Box<ProtocolValue>>),
 
     /// `<status>'paths''proofName''allProofs''proofNumber'</status>`
     ///

@@ -117,17 +117,17 @@ impl ProtocolValue {
                     "some" => {
                         assert_decode_error(xml.children.len() == 1, || InvalidOption)?;
 
-                        Ok(Optional(Box::new(
+                        Ok(Optional(
                             xml.children[0]
                                 .as_element()
-                                .map(|el| ProtocolValue::decode(el.clone()))
+                                .map(|el| ProtocolValue::decode(el.clone()).map(Box::new))
                                 .transpose()?,
-                        )))
+                        ))
                     }
                     "none" => {
                         assert_decode_error(xml.children.is_empty(), || InvalidOption)?;
 
-                        Ok(Optional(Box::new(None)))
+                        Ok(Optional(None))
                     }
                     _ => Err(InvalidOption),
                 }

@@ -25,15 +25,15 @@ async fn main() -> io::Result<()> {
     let cli_args = env::args().collect::<Vec<_>>();
 
     if cli_args.len() != 4 {
-        log::error!("coqide-kak requires two positional arguments in this order: <KAK_SESSION> <KAK_BUFFER> <KAK_COMMAND_FILE>.");
+        log::error!("coqide-kak requires three positional arguments in this order: <KAK_SESSION> <KAK_BUFFER> <KAK_COMMAND_FILE>.");
         std::process::exit(exitcode::USAGE);
     }
-
-    let mut slave = IdeSlave::init().await?;
 
     let kak_session = cli_args[1].clone();
     let kak_buffer = cli_args[2].clone();
     let kak_commands = cli_args[3].clone();
+
+    let mut slave = IdeSlave::init(kak_session, kak_buffer).await?;
 
     let mut signals = Signals::new(&[SIGUSR1, SIGINT])?;
     for sig in signals.forever() {
@@ -43,7 +43,7 @@ async fn main() -> io::Result<()> {
         // - Try parse into a `KakCommand`
         // - If command, execute on `slave` and `kak_session`
         // - Keep waiting
-        log::debug!("Received {:?}", sig);
+        log::debug!("Received signal {:?}", sig);
 
         if sig == SIGINT {
             slave.quit().await?;

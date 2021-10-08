@@ -11,10 +11,11 @@ pub struct IdeSlave {
     control_w: TcpStream,
     proc: Child,
     state: SlaveState,
+    session: String,
 }
 
 impl IdeSlave {
-    pub async fn init() -> io::Result<Self> {
+    pub async fn init(session: String, file: String) -> io::Result<Self> {
         let listener1 = TcpListener::bind("127.0.0.1:0").await?;
         let listener2 = TcpListener::bind("127.0.0.1:0").await?;
         let listener3 = TcpListener::bind("127.0.0.1:0").await?;
@@ -25,12 +26,16 @@ impl IdeSlave {
         let control_r = listener3.accept();
         let control_w = listener4.accept();
 
-        let proc = coqtop::spawn([
-            listener1.local_addr()?.port(),
-            listener2.local_addr()?.port(),
-            listener3.local_addr()?.port(),
-            listener4.local_addr()?.port(),
-        ]);
+        let additional_flags = ["-topfile".to_string(), file];
+        let proc = coqtop::spawn(
+            [
+                listener1.local_addr()?.port(),
+                listener2.local_addr()?.port(),
+                listener3.local_addr()?.port(),
+                listener4.local_addr()?.port(),
+            ],
+            &additional_flags,
+        );
 
         let (main_r, main_w, control_r, control_w, proc) =
             join!(main_r, main_w, control_r, control_w, proc);
@@ -50,6 +55,7 @@ impl IdeSlave {
             control_w,
             proc,
             state: SlaveState::Connected,
+            session,
         })
     }
 

@@ -1,4 +1,4 @@
-use crate::{coqtop, xml_protocol::types::ProtocolCall};
+use crate::{coqtop, xml_protocol::types::{ProtocolCall, ProtocolValue}};
 use async_net::{TcpListener, TcpStream};
 use async_process::Child;
 use futures::{join, AsyncWriteExt};
@@ -11,11 +11,10 @@ pub struct IdeSlave {
     control_w: TcpStream,
     proc: Child,
     state: SlaveState,
-    session: String,
 }
 
 impl IdeSlave {
-    pub async fn init(session: String, file: String) -> io::Result<Self> {
+    pub async fn init(file: String) -> io::Result<Self> {
         let listener1 = TcpListener::bind("127.0.0.1:0").await?;
         let listener2 = TcpListener::bind("127.0.0.1:0").await?;
         let listener3 = TcpListener::bind("127.0.0.1:0").await?;
@@ -26,7 +25,12 @@ impl IdeSlave {
         let control_r = listener3.accept();
         let control_w = listener4.accept();
 
-        let additional_flags = ["-topfile".to_string(), file];
+        let additional_flags = [
+            "-async-proofs".to_string(),
+            "on".to_string(),
+            "-topfile".to_string(),
+            file,
+        ];
         let proc = coqtop::spawn(
             [
                 listener1.local_addr()?.port(),
@@ -39,7 +43,7 @@ impl IdeSlave {
 
         let (main_r, main_w, control_r, control_w, proc) =
             join!(main_r, main_w, control_r, control_w, proc);
-        let ((main_r, _), (main_w, _), (control_r, _), (control_w, _), proc) =
+        let ((main_r, _), (mut main_w, _), (control_r, _), (control_w, _), proc) =
             (main_r?, main_w?, control_r?, control_w?, proc?);
 
         log::debug!(
@@ -55,7 +59,6 @@ impl IdeSlave {
             control_w,
             proc,
             state: SlaveState::Connected,
-            session,
         })
     }
 

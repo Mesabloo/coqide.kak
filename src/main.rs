@@ -1,14 +1,13 @@
 #![feature(derive_default_enum)]
 #![feature(box_patterns)]
 
-use crate::coqtop::slave::{IdeSlave, SlaveState};
-use async_net::{TcpListener, TcpStream};
-use futures::join;
+use crate::coqtop::slave::IdeSlave;
+use kak_protocol::processor::CommandProcessor;
 use signal_hook::{
     consts::{SIGINT, SIGUSR1},
     iterator::Signals,
 };
-use std::{env, io};
+use std::{env, fs::File, io};
 
 mod coqtop;
 mod kak_protocol;
@@ -16,24 +15,28 @@ mod xml_protocol;
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
-    env_logger::builder()
-        .format_level(true)
-        .format_timestamp_millis()
-        .format_indent(Some(4))
-        .init();
-
     let cli_args = env::args().collect::<Vec<_>>();
 
     if cli_args.len() != 4 {
-        log::error!("coqide-kak requires three positional arguments in this order: <KAK_SESSION> <KAK_BUFFER> <KAK_COMMAND_FILE>.");
-        std::process::exit(exitcode::USAGE);
+        panic!("coqide-kak requires three positional arguments in this order: <KAK_SESSION> <KAK_BUFFER> <KAK_COMMAND_FILE>.");
     }
 
     let kak_session = cli_args[1].clone();
     let kak_buffer = cli_args[2].clone();
     let kak_commands = cli_args[3].clone();
 
-    let mut slave = IdeSlave::init(kak_session, kak_buffer).await?;
+    env_logger::builder()
+        .format_level(true)
+        .format_timestamp_millis()
+        .format_indent(Some(4))
+        // .target(env_logger::Target::Pipe(Box::new(File::open(format!(
+        //     "{}/log",
+        //     &kak_commands
+        // ))?)))
+        .init();
+
+    let slave = IdeSlave::init(kak_buffer).await?;
+    let kak_processor = CommandProcessor::init(kak_commands, kak_session, slave).await?;
 
     let mut signals = Signals::new(&[SIGUSR1, SIGINT])?;
     for sig in signals.forever() {
@@ -46,9 +49,11 @@ async fn main() -> io::Result<()> {
         log::debug!("Received signal {:?}", sig);
 
         if sig == SIGINT {
-            slave.quit().await?;
+            kak_processor.kill_session().await?;
 
             break;
+        } else if sig == SIGUSR1 {
+            kak_processor.process_command().await?.execute().await?;
         }
     }
 

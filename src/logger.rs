@@ -6,25 +6,33 @@ use log4rs::{
     append::{console::ConsoleAppender, file::FileAppender},
     config::{Appender, Logger, Root},
     encode::pattern::PatternEncoder,
+    filter::threshold::ThresholdFilter,
     Config, Handle,
 };
 
 pub fn init<P: AsRef<Path>>(path: P) -> io::Result<Handle> {
     let on_console = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{h([{d(%Y-%m-%d %H:%M:%S)} {M} {l}])} {m}{n}")))
+        .encoder(Box::new(PatternEncoder::new(
+            "{h([{d(%Y-%m-%d %H:%M:%S)} {M} {l}])} {m}{n}",
+        )))
         .target(Target::Stderr)
         .build();
     let in_log_file = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d} @ {M}: {m}{n}")))
+        .encoder(Box::new(PatternEncoder::new(
+            "[{d(%Y-%m-%d %H:%M:%S)} {M} {l}] {m}{n}",
+        )))
         .build(path)?;
 
     let config = Config::builder()
-        .appender(Appender::builder().build("stderr", Box::new(on_console)))
-        .appender(Appender::builder().build("log", Box::new(in_log_file)))
-        .logger(
-            Logger::builder()
-                .appender("log")
-                .build("log", LevelFilter::Debug),
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(LevelFilter::Warn)))
+                .build("stderr", Box::new(on_console)),
+        )
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(LevelFilter::Debug)))
+                .build("log", Box::new(in_log_file)),
         )
         .build(
             Root::builder()

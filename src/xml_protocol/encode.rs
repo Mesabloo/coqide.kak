@@ -21,6 +21,7 @@ impl ProtocolValue {
                 || "<option val=\"none\"/>".to_string(),
                 |val| format!("<option val=\"some\">{}</option>", val.encode()),
             ),
+            StateId(id) => format!("<state_id val=\"{}\"/>", id),
             Status(box ps, box pn, box pa, box nb) => format!(
                 "<status>{}{}{}{}</status>",
                 ps.encode(),

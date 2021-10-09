@@ -1,16 +1,13 @@
-#![feature(derive_default_enum)]
 #![feature(box_patterns)]
-#![feature(path_try_exists)]
 
 use crate::coqtop::slave::IdeSlave;
-use async_process::{Command, Stdio};
-use async_std::io::WriteExt;
 use kak_protocol::processor::CommandProcessor;
 use signal_hook::{
     consts::{SIGINT, SIGUSR1},
     iterator::Signals,
 };
-use std::{env, fs::File, io, path::Path};
+use std::{env, fs::File, io, path::Path, process::Stdio};
+use tokio::{io::AsyncWriteExt, process::Command};
 use unix_named_pipe as fifos;
 
 mod coqtop;
@@ -18,7 +15,7 @@ mod kak_protocol;
 mod logger;
 mod xml_protocol;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> io::Result<()> {
     let cli_args = env::args().collect::<Vec<_>>();
 
@@ -59,17 +56,22 @@ async fn main() -> io::Result<()> {
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .spawn()?;
-    write!(
-        proc.stdin.as_mut().unwrap(),
-        r#"
+    proc.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(
+            format!(
+                r#"
         evaluate-commands -buffer '{}' %{{
           coqide-send-to-process %{{init}}
         }}
         "#,
-        kak_buffer
-    )
-    .await?;
-    proc.status().await?;
+                kak_buffer
+            )
+            .as_bytes(),
+        )
+        .await?;
+    proc.wait().await?;
     // NOTE: let the process die on its own
 
     log::debug!("Waiting for signals...");
@@ -92,7 +94,7 @@ async fn main() -> io::Result<()> {
         }
     }
 
-    std::process::exit(exitcode::OK);
+    std::process::exit(exitcode::OK)
 }
 
 /*

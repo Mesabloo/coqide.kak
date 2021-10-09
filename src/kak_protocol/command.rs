@@ -2,14 +2,18 @@ use crate::{
     coqtop::slave::IdeSlave,
     xml_protocol::types::{ProtocolCall, ProtocolValue},
 };
-use futures::{
-    io::AsyncRead, io::BufReader, AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncSeekExt,};
-use nom::{
-    bytes::streaming::tag,
-    character::streaming::{newline, space0},
-    IResult,
+use combine::{
+    attempt, choice, decode_tokio,
+    error::ParseError,
+    parser::{
+        combinator::{any_partial_state, AnyPartialState},
+        range::range,
+    },
+    stream::Decoder,
+    Parser, RangeStream,
 };
-use std::{fs::File, io::{self, Read, SeekFrom}, ops::DerefMut, pin::Pin};
+use tokio::fs::File;
+use std::{io, ops::DerefMut, pin::Pin};
 
 pub struct Command<'a> {
     pub session: &'a String,
@@ -28,7 +32,7 @@ impl<'a> Command<'a> {
         match self.kind {
             CommandKind::Init => {
                 self.slave
-                    .send_message(ProtocolCall::Init(ProtocolValue::Optional(None)))
+                    .send_call(ProtocolCall::Init(ProtocolValue::Optional(None)))
                     .await
             }
             CommandKind::Nop => Ok(()),
@@ -39,55 +43,64 @@ impl<'a> Command<'a> {
 use CommandKind::*;
 
 impl CommandKind {
-    pub async fn parse_from(mut input: Pin<&mut File>) -> io::Result<Self> {
-        let mut buf = vec![];
-        let stream = input.deref_mut();
+    pub async fn parse_from(mut input: &mut File) -> io::Result<Self> {
+        let mut decoder = Decoder::new();
 
-        'main: loop {
-            log::debug!("Read {} bytes for parser", buf.len());
-            match parse_command(&buf) {
-                IResult::Ok((_, cmd)) => break Ok(cmd),
-                Err(nom::Err::Incomplete(nom::Needed::Size(n))) => {
-                    let mut n = n.get();
+        decode_tokio!(decoder, input, parse_command(), |input, _position| {
+            combine::easy::Stream::from(input)
+        })
+        .map_err(combine::easy::Errors::<u8, &[u8], _>::from)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", err)))
+        // 'main: loop {
+        //     parse_command()
+        // }
 
-                    log::debug!("Parsing needs {} more bytes", n);
+        // 'main: loop {
+        //     match parse_command(&buf) {
+        //         IResult::Ok((_, cmd)) => break Ok(cmd),
+        //         Err(nom::Err::Incomplete(nom::Needed::Size(n))) => {
+        //             let mut n = n.get();
 
-                    'fetch_loop: loop {
-                        let m = buf.len();
-                        buf.resize(m + n, 0);
+        //             'fetch_loop: loop {
+        //                 let m = buf.len();
+        //                 buf.resize(m + n, 0);
 
-                        let o = stream.read(&mut buf[m..m + n])?;
-                        match o {
-                            0 => {
-                                // No bytes could be fetched, stop
-                                log::warn!("Received EOF while parsing a command. Ignoring");
-                                break 'main Ok(Nop);
-                            }
-                            _ if o != n => {
-                                n = n - o;
-                                log::warn!("Missing {} bytes...", n);
-                            }
-                            _ => break 'fetch_loop, // enough data was fetched, go on
-                        }
-                    }
-                }
-                Err(err) => {
-                    log::error!("Error while parsing command: {:?}\nSkipping some bytes until parsing succeeds...", err);
-                    buf.remove(0);
-                }
-            }
-        }
+        //                 let o = stream.read(&mut buf[m..m + n])?;
+        //                 match o {
+        //                     0 => {
+        //                         // No bytes could be fetched, stop
+        //                         log::warn!("Received EOF while parsing a command. Ignoring");
+        //                         break 'main Ok(Nop);
+        //                     }
+        //                     _ if o != n => {
+        //                         n = n - o;
+        //                     }
+        //                     _ => break 'fetch_loop, // enough data was fetched, go on
+        //                 }
+        //             }
+        //         }
+        //         Err(err) => {
+        //             log::error!("Error while parsing command: {:?}\nSkipping some bytes until parsing succeeds...", err);
+        //             buf.remove(0);
+        //         }
+        //     }
+        // }
     }
 }
 
-fn parse_init<'a>(s: &'a [u8]) -> IResult<&'a [u8], CommandKind> {
-    let (s, _) = tag("init")(s)?;
-    let (s, _) = space0(s)?;
-    let (s, _) = newline(s)?;
-    Ok((s, Init))
+fn parse_command<'a, I>(
+) -> impl Parser<I, Output = CommandKind, PartialState = AnyPartialState> + 'a
+where
+    I: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+    I::Error: ParseError<I::Token, I::Range, I::Position>,
+{
+    any_partial_state(choice((attempt(parse_init()),)))
 }
 
-fn parse_command<'a>(s: &'a [u8]) -> IResult<&'a [u8], CommandKind> {
-    let (s, kind) = parse_init(s)?;
-    Ok((s, kind))
+fn parse_init<'a, I>() -> impl Parser<I, Output = CommandKind, PartialState = AnyPartialState> + 'a
+where
+    I: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+    I::Error: ParseError<I::Token, I::Range, I::Position>,
+{
+    any_partial_state(range(&b"init\n"[..]).map(|_| CommandKind::Init))
 }

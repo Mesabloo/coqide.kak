@@ -1,7 +1,7 @@
 use super::command::{Command, CommandKind};
 use crate::coqtop::slave::IdeSlave;
-use futures::io::BufReader;
-use std::{fs::File, io, pin::Pin};
+use tokio::fs::File;
+use std::io;
 use unix_named_pipe as fifos;
 
 pub struct CommandProcessor {
@@ -13,7 +13,7 @@ pub struct CommandProcessor {
 impl CommandProcessor {
     pub async fn init(pipes_path: String, session: String, slave: IdeSlave) -> io::Result<Self> {
         log::debug!("Opening command pipe '{}/cmd'", pipes_path);
-        let pipe = fifos::open_read(format!("{}/cmd", pipes_path))?;
+        let pipe = File::from(fifos::open_read(format!("{}/cmd", pipes_path))?);
         log::debug!("Pipe opened!");
 
         Ok(CommandProcessor {
@@ -30,7 +30,7 @@ impl CommandProcessor {
     }
 
     pub async fn process_command<'a>(&'a mut self) -> io::Result<Command<'a>> {
-        let kind = CommandKind::parse_from(Pin::new(&mut self.pipe)).await?;
+        let kind = CommandKind::parse_from(&mut self.pipe).await?;
 
         log::debug!("Received command '{:?}' through control pipe", kind);
 

@@ -1,5 +1,5 @@
-use async_process::{Child, Command, Stdio};
-use std::io;
+use std::{io, process::Stdio};
+use tokio::process::{Child, Command};
 
 pub mod slave;
 
@@ -15,15 +15,6 @@ pub static COQTOP: &str = "coqidetop";
 ///
 /// - `flags` are additional command-line flags passed to the `coqidetop` process
 pub async fn spawn(ports: [u16; 4], flags: &[String]) -> io::Result<Child> {
-    log::debug!(
-        "Connecting `{}` process to ports {}:{}:{}:{}",
-        COQTOP,
-        ports[0],
-        ports[1],
-        ports[2],
-        ports[3]
-    );
-
     Command::new(COQTOP)
         .arg("-main-channel")
         .arg(format!("127.0.0.1:{}:{}", ports[0], ports[1]))

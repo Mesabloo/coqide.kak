@@ -6,14 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-net = "1.6.1"
-async-std = { version = "1.6", features = ["attributes"] }
 futures = "0.3"
-xmltree = "0.10.3"
 signal-hook = { version = "0.3.10", features = ["iterator"] }
 exitcode = "1.1.2"
-async-process = "1.2.0"
 log = "0.4.14"
 log4rs = "1.0.0"
-nom = "7.0.0"
 unix-named-pipe = "0.2.0"
+combine = { git = "https://github.com/mesabloo/combine" , features = ["tokio"] }
+bytes = "1.*"
+tokio-util = { version = "0.6", features = ["codec"] }
+tokio = { version = "1.12.0", features = ["net", "fs", "io-util", "process", "rt", "macros", "rt-multi-thread"] }

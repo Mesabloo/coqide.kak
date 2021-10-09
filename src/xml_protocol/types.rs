@@ -1,6 +1,6 @@
-use xmltree::Element;
+use super::parser::XMLNode;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProtocolValue {
     /// `<unit/>` which holds no value
     Unit,
@@ -16,6 +16,8 @@ pub enum ProtocolValue {
     Pair(Box<ProtocolValue>, Box<ProtocolValue>),
     /// `<option val="none"/>` and `<option val="some">v1</option>` represents optional values
     Optional(Option<Box<ProtocolValue>>),
+    /// `<state_id val="..."/>` represents a number
+    StateId(i64),
 
     /// `<status>'paths''proofName''allProofs''proofNumber'</status>`
     ///
@@ -31,14 +33,14 @@ pub enum ProtocolValue {
     ),
 
     /// An unknown value has been decoded
-    Unknown(Element),
+    Unknown(XMLNode),
 }
 
 /// Result returned by `coqidetop` on query
 #[derive(Debug)]
 pub enum ProtocolResult {
     /// Everything went well, and `coqidetop` responded with some value
-    Good(String),
+    Good(ProtocolValue),
     /// An error occured
     Fail(Option<i64>, Option<i64>, ProtocolRichPP),
 }
@@ -51,7 +53,7 @@ pub enum ProtocolRichPP {
 }
 
 /// Commands that `coqidetop` can understand
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProtocolCall {
     /// Initialize the process
     Init(ProtocolValue),

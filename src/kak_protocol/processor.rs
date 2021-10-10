@@ -1,7 +1,7 @@
 use super::command::{Command, CommandKind};
 use crate::coqtop::slave::IdeSlave;
-use tokio::fs::File;
 use std::io;
+use tokio::fs::File;
 use unix_named_pipe as fifos;
 
 pub struct CommandProcessor {
@@ -30,9 +30,15 @@ impl CommandProcessor {
     }
 
     pub async fn process_command<'a>(&'a mut self) -> io::Result<Command<'a>> {
-        let kind = CommandKind::parse_from(&mut self.pipe).await?;
+        let kind = loop {
+            let kind = CommandKind::parse_from(&mut self.pipe).await?;
 
-        log::debug!("Received command '{:?}' through control pipe", kind);
+            log::debug!("Received command '{:?}' through control pipe", kind);
+            match kind {
+                Nop => {}
+                k => break k,
+            }
+        };
 
         Ok(Command {
             session: &self.session,

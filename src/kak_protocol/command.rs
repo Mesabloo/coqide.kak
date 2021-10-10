@@ -2,21 +2,23 @@ use crate::{
     coqtop::slave::IdeSlave,
     xml_protocol::types::{ProtocolCall, ProtocolValue},
 };
+use bytes::Buf;
 use combine::{
-    attempt, choice, decode_tokio,
+    attempt, choice, decode_tokio, easy,
     error::ParseError,
     parser,
     parser::{
-        self,
         combinator::{any_partial_state, AnyPartialState},
         range::range,
         token,
     },
-    stream::Decoder,
+    stream::PartialStream,
     Parser, RangeStream,
 };
+use futures::TryStreamExt;
 use std::{io, ops::DerefMut, pin::Pin};
 use tokio::fs::File;
+use tokio_util::codec::{Decoder, FramedRead};
 
 pub struct Command<'a> {
     pub session: &'a String,
@@ -45,15 +47,58 @@ impl<'a> Command<'a> {
 
 use CommandKind::*;
 
-impl CommandKind {
-    pub async fn parse_from(mut input: &mut File) -> io::Result<Self> {
-        let mut decoder = Decoder::new();
+#[derive(Default)]
+struct CommandDecoder {
+    state: AnyPartialState,
+}
 
-        decode_tokio!(decoder, input, parse_command(), |input, _position| {
-            combine::easy::Stream::from(input)
-        })
-        .map_err(combine::easy::Errors::<u8, &[u8], _>::from)
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", err)))
+impl Decoder for CommandDecoder {
+    type Item = CommandKind;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let (opt, removed) = combine::stream::decode(
+            parse_command(),
+            &mut easy::Stream(PartialStream(&src[..])),
+            &mut self.state,
+        )
+        .map_err(|err| {
+            let err = err
+                .map_range(|r| {
+                    std::str::from_utf8(r)
+                        .ok()
+                        .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                })
+                .map_position(|p| p.translate_position(&src[..]));
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{}\nIn input: `{}`", err, std::str::from_utf8(src).unwrap()),
+            )
+        })?;
+
+        log::debug!(
+            "Accepted {} bytes from stream: {:?}",
+            removed,
+            std::str::from_utf8(&src[..removed]).unwrap_or("NOT UTF-8")
+        );
+
+        src.advance(removed);
+
+        match opt {
+            None => {
+                log::warn!("More input needed to parse response!");
+                Ok(None)
+            }
+            o => Ok(o),
+        }
+    }
+}
+
+impl CommandKind {
+    pub async fn parse_from(input: &mut File) -> io::Result<Option<Self>> {
+        let decoder = CommandDecoder::default();
+
+        FramedRead::new(input, decoder).try_next().await
     }
 }
 

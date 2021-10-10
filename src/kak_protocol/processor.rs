@@ -29,21 +29,21 @@ impl CommandProcessor {
         Ok(())
     }
 
-    pub async fn process_command<'a>(&'a mut self) -> io::Result<Command<'a>> {
-        let kind = loop {
+    pub async fn process_command<'a>(&'a mut self) -> io::Result<Option<Command<'a>>> {
+        loop {
             let kind = CommandKind::parse_from(&mut self.pipe).await?;
 
             log::debug!("Received command '{:?}' through control pipe", kind);
             match kind {
-                Nop => {}
-                k => break k,
+                Some(CommandKind::Nop) => {}
+                k => {
+                    break Ok(k.map(|kind| Command {
+                        session: &self.session,
+                        slave: &mut self.ide_slave,
+                        kind,
+                    }))
+                }
             }
-        };
-
-        Ok(Command {
-            session: &self.session,
-            slave: &mut self.ide_slave,
-            kind,
-        })
+        }
     }
 }

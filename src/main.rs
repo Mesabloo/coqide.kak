@@ -90,7 +90,10 @@ async fn main() -> io::Result<()> {
 
             break;
         } else if sig == SIGUSR1 {
-            kak_processor.process_command().await?.execute().await?;
+            match kak_processor.process_command().await? {
+                None => {}
+                Some(cmd) => cmd.execute().await?,
+            }
         }
     }
 

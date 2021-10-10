@@ -106,7 +106,9 @@ impl XMLNode {
         FramedRead::new(stream, decoder)
             .try_next()
             .await
-            .map(|opt| opt.unwrap_or_else(|| Default::default()))
+            .and_then(|opt| {
+                opt.ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "Cannot fetch next XML node"))
+            })
     }
 
     pub fn get_text(&self) -> String {

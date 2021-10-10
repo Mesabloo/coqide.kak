@@ -32,8 +32,8 @@ async fn main() -> io::Result<()> {
     let result_path = format!("{}/result", &kak_pipe_dirs);
     let log_path = format!("{}/log", &kak_pipe_dirs);
     let cmd_path = format!("{}/cmd", &kak_pipe_dirs);
-    for path in [goal_path, result_path, cmd_path] {
-        if !Path::new(&path).exists() {
+    for path in [&goal_path, &result_path, &cmd_path] {
+        if !Path::new(path).exists() {
             fifos::create(path, None)?;
         }
     }
@@ -56,17 +56,17 @@ async fn main() -> io::Result<()> {
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .spawn()?;
-    proc.stdin
-        .as_mut()
-        .unwrap()
+
+    log::debug!("Setting up goal and result buffers in the kakoune client");
+
+    let kak_stdin = proc.stdin.as_mut().unwrap();
+    kak_stdin
         .write_all(
             format!(
-                r#"
-        evaluate-commands -buffer '{}' %{{
-          coqide-send-to-process %{{init}}
-        }}
-        "#,
-                kak_buffer
+                r#"evaluate-commands -buffer '{0}' %{{ edit! -readonly -fifo "{1}" "%opt{{coqide_result_buffer}}" }}
+                evaluate-commands -buffer '{0}' %{{ edit! -readonly -fifo "{2}" "%opt{{coqide_goal_buffer}}" }}
+                evaluate-commands -buffer '{0}' %{{ coqide-send-to-process %{{init}} }}"#,
+                kak_buffer, result_path, goal_path,
             )
             .as_bytes(),
         )

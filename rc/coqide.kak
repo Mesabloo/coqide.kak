@@ -1,12 +1,12 @@
 # Interface:
-# - coqide_command
-# - coqide_processed
-# - coqide-start
-# - coqide-stop
-# - coqide-dump-log
-# - coqide-next
-# - coqide-previous
-# - coqide-move-to
+# - coqide_command:    custom the command used to launch the backend
+# - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
+# - coqide-start:      start the backend daemon and try to connect to it
+# - coqide-stop:       stop the daemon, give up on the processed state and remove logs
+# - coqide-dump-log:   dump the logs into a specific buffer
+# - coqide-next:       try to process the next Coq statement
+# - coqide-previous:   try to go back to the last processed state
+# - coqide-move-to:    move to the end of the next Coq statement (from the main cursor) and try to process until this point
 
 declare-option -docstring "
   Command to launch `coqide-kak`.
@@ -38,6 +38,25 @@ declare-option -docstring "
   The face used to highlight can be customised with the option `coqide_processed`.
 " -hidden range-specs coqide_processed_range 
 
+declare-option -docstring "
+  The name of the buffer used to show logs of the daemon.
+
+  To allow for concurrent daemons, it is formatted as `*coqide-%%pid-log*`.
+" -hidden str coqide_log_buffer
+
+declare-option -docstring "
+  The name of the goal buffer for the current coqide daemon.
+
+  To allow for concurrent daemons, it is formatted as `*coqide-%%pid-goal*`.
+" -hidden str coqide_goal_buffer
+
+declare-option -docstring "
+  The name of the result buffer for the current coqide daemon.
+
+  To allow for concurrent daemons, it is formatted as `*coqide-%%pid-result*`.
+" -hidden str coqide_result_buffer
+
+
 define-command -docstring "
   Start `coqide-kak` for the current buffer.  
 " -params 0 coqide-start %{
@@ -45,7 +64,7 @@ define-command -docstring "
   set-option buffer coqide_processed_range %val{timestamp} '1.1,1.1|coqide_processed'
   
   set-option buffer coqide_pipe %sh{
-    filename=$(sed 's|/|_|g' <<< "$kak_opt_coqide_buffer")
+    filename="${kak_opt_coqide_buffer//[^A-Za-z0-9._-]/_}"
     echo "/tmp/coqide-${kak_session}-pipe-${filename}"
   }
 
@@ -56,16 +75,22 @@ define-command -docstring "
   evaluate-commands %sh{
     if ! type "$kak_opt_coqide_command" &>/dev/null; then
       echo "fail 'coqide: Unknown command \"$kak_opt_coqide_command\"'"
-      exit 1
+      exit
     fi
   }
   
   set-option buffer coqide_pid %sh{
-    $kak_opt_coqide_command "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe" </dev/null &>/dev/null &
+    "$kak_opt_coqide_command" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe" </dev/null &>/dev/null &
     echo "$!"
   }
 
+  set-option buffer coqide_log_buffer "*coqide-%opt{coqide_pid}-log*"
+  set-option buffer coqide_goal_buffer "*coqide-%opt{coqide_pid}-goal*"
+  set-option buffer coqide_result_buffer "*coqide-%opt{coqide_pid}-result*"
+
   evaluate-commands %sh{
+    # Ideally, there is a way to add a hook on buffer modifications, but there seems
+    # to be none at the moment, which is unfortunate
     echo "
       hook -once -group coqide buffer=$kak_opt_coqide_buffer BufClose .* %{
         coqide-stop
@@ -83,7 +108,7 @@ define-command -docstring "
   Update the state of the highlighter when new text is added before its tip.
   Does nothing if the text inserted is after the tip.
 " -hidden -params 0 coqide-on-text-change %{
-  evaluate-commands -draft -save-regs '/' %sh{
+  evaluate-commands %sh{
     IFS=" .,|" read -r _ _ _ eline ecol _ <<< "$kak_opt_coqide_processed_range"
     eline=${eline:-0}
     ecol=${ecol:-0}
@@ -97,15 +122,32 @@ define-command -docstring "
       #       `$sline < $eline || ($sline == $eline && $scol < $ecol)`
 
       # jump to the first `.` before the first selection, and only keep this selection
-      echo '
-        try %{
-          execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>"
-        }'
-      echo 'set-register slash "\."'
-      echo 'execute-keys "<a-N><space>"'
-      echo 'coqide-move-to'
+      # echo '
+      #   try %{
+      #     execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>"
+      #   }'
+      # echo 'set-register slash "\."'
+      # echo 'execute-keys "<a-N><space>"'
+      # echo 'coqide-back-to'
+      echo "coqide-invalidate-state"
     fi
   }
+}
+
+define-command -docstring "
+  Invalidates the current processed state at least until the first selection.
+
+  If the first selection does not point to a `.`, then the state is rewund back until the last `.` before.
+" - hidden -params 0 coqide-invalidate-state %{
+  evaluate-commands -draft -save-regs "/" %sh {
+
+  }
+}
+
+define-command -docstring "
+  Goes back to the last processed statement before the main cursor.
+" -hidden -params 0 coqide-back-to %{
+  
 }
 
 define-command -docstring "
@@ -156,7 +198,7 @@ define-command -docstring "
 define-command -docstring "
   Dump the log in a specific buffer for user examination.
 " -params 0 coqide-dump-log %{
-  edit! -debug -readonly "%opt{coqide_pipe}/log"
+  edit! -debug -readonly -fifo "%opt{coqide_pipe}/log" "%opt{coqide_log_buffer}"
 }
 
 define-command -docstring "
@@ -165,7 +207,12 @@ define-command -docstring "
   Also deletes the control pipe.
 " -params 0 coqide-stop %{
   remove-hooks buffer coqide
-  nop %sh{ exec 3>&- }
+
+  # NOTE: do not put all those lines in the same `try` block, as we want to be able
+  #       to individually delete each one 
+  try %{ delete-buffer! "%opt{coqide_log_buffer}" }
+  try %{ delete-buffer! "%opt{coqide_goal_buffer}" }
+  try %{ delete-buffer! "%opt{coqide_result_buffer}" }
 
   nop %sh{
     kill -INT "$kak_opt_coqide_pid"
@@ -174,6 +221,9 @@ define-command -docstring "
 
   remove-highlighter buffer/coqide_processed
 
+  unset-option buffer coqide_log_buffer
+  unset-option buffer coqide_goal_buffer
+  unset-option buffer coqide_result_buffer
   unset-option buffer coqide_pid 
   unset-option buffer coqide_processed_range
 }

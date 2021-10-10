@@ -10,7 +10,7 @@ use combine::{
     ParseError, RangeStream,
 };
 use futures::TryStreamExt;
-use std::{collections::HashMap, io, ops::DerefMut, pin::Pin};
+use std::{collections::HashMap, io};
 use tokio::io::AsyncRead;
 use tokio_util::codec::{Decoder, FramedRead};
 
@@ -35,11 +35,6 @@ impl Default for XMLNode {
 pub enum Child {
     Node(XMLNode),
     Raw(String),
-}
-
-enum DecodeError {
-    InvalidXML,
-    MalformedXML,
 }
 
 struct XMLDecoder {
@@ -97,11 +92,11 @@ impl Decoder for XMLDecoder {
 }
 
 impl XMLNode {
-    pub async fn decode_stream<R>(mut stream: R) -> io::Result<Self>
+    pub async fn decode_stream<R>(stream: R) -> io::Result<Self>
     where
         R: AsyncRead + Unpin,
     {
-        let mut decoder = XMLDecoder::default();
+        let decoder = XMLDecoder::default();
 
         FramedRead::new(stream, decoder)
             .try_next()
@@ -175,7 +170,7 @@ parser! {
                   children
               })
           } else {
-              Err(todo!())
+              todo!()
           }
         )
     }

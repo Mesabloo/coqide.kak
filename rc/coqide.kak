@@ -173,7 +173,7 @@ define-command -docstring "
 define-command -docstring "
   Cancel the lastly processed Coq statement.  
 " -params 0 coqide-previous %{
-  coqide-send-to-process %{previous}
+  coqide-send-to-process 'previous'
 }
 
 define-command -docstring "

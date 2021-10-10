@@ -16,3 +16,4 @@ combine = { git = "https://github.com/mesabloo/combine" , features = ["tokio"] }
 bytes = "1.*"
 tokio-util = { version = "0.6", features = ["codec"] }
 tokio = { version = "1.12.0", features = ["net", "fs", "io-util", "process", "rt", "macros", "rt-multi-thread"] }
+bimap = "0.6.1"

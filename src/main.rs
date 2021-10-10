@@ -32,22 +32,26 @@ async fn main() -> io::Result<()> {
     let result_path = format!("{}/result", &kak_pipe_dirs);
     let log_path = format!("{}/log", &kak_pipe_dirs);
     let cmd_path = format!("{}/cmd", &kak_pipe_dirs);
-    for path in [&goal_path, &result_path, &cmd_path] {
+
+    // NOTE: create FIFOs and files separately
+    for path in [&cmd_path, &log_path] {
         if !Path::new(path).exists() {
             fifos::create(path, None)?;
         }
     }
-    if !Path::new(&log_path).exists() {
-        File::create(log_path)?;
+    for path in [&goal_path, &result_path] {
+        if !Path::new(path).exists() {
+            File::create(path)?;
+        }
     }
 
     // Setup logger
-    let _handle = logger::init(format!("{}/log", &kak_pipe_dirs))?;
+    let _handle = logger::init(&log_path)?;
 
     // Setup IDE slave and command processor
-    let slave = IdeSlave::init(kak_buffer.clone()).await?;
+    let slave = IdeSlave::init(kak_buffer.clone(), &goal_path, &result_path).await?;
     let mut kak_processor =
-        CommandProcessor::init(kak_pipe_dirs, kak_session.clone(), slave).await?;
+        CommandProcessor::init(cmd_path, kak_session.clone(), slave).await?;
 
     // Tell Kakoune to send use an `init` message
     let mut proc = Command::new("kak")

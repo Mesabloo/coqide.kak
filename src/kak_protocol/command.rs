@@ -4,7 +4,7 @@ use crate::{
 };
 use bytes::Buf;
 use combine::{
-    attempt, choice, decode_tokio, easy,
+    choice, easy,
     error::ParseError,
     parser,
     parser::{
@@ -13,10 +13,10 @@ use combine::{
         token,
     },
     stream::PartialStream,
-    Parser, RangeStream,
+    RangeStream,
 };
 use futures::TryStreamExt;
-use std::{io, ops::DerefMut, pin::Pin};
+use std::io;
 use tokio::fs::File;
 use tokio_util::codec::{Decoder, FramedRead};
 

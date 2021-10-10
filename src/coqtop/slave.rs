@@ -2,11 +2,60 @@ use crate::{
     coqtop,
     xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolValue},
 };
+use bimap::BiMap;
 use std::io;
+use tokio::{
+    fs::File,
+    net::{TcpListener, TcpStream},
+};
 use tokio::{io::AsyncWriteExt, join, process::Child};
-use tokio::net::{TcpListener, TcpStream};
 
-/// The state of the IDE slave (`coqidetop`)
+///
+pub enum ConnectionState {
+    Connected,
+    Disconnected,
+    Error,
+}
+
+impl Default for ConnectionState {
+    fn default() -> Self {
+        ConnectionState::Connected
+    }
+}
+
+#[derive(Eq, PartialEq, PartialOrd, Ord, Hash)]
+///
+pub struct Range {
+    /// The beginning of the range, encoded as `(line, column)`
+    begin: (u64, u64),
+    /// The end of the range, encoded as `(line, column)`
+    end: (u64, u64),
+}
+
+/// The current state of the slave
+pub struct SlaveState {
+    /// Connection state to the slave
+    connection: ConnectionState,
+    /// The state ID returned as a response to an `Init` call
+    root_id: i64,
+    /// The current state ID forwarded to some calls
+    current_id: i64,
+    ///
+    states: BiMap<Range, i64>,
+}
+
+impl Default for SlaveState {
+    fn default() -> Self {
+        SlaveState {
+            connection: ConnectionState::Connected,
+            root_id: -1,
+            current_id: -1,
+            states: BiMap::new(),
+        }
+    }
+}
+
+///
 pub struct IdeSlave {
     /// The main readable channel, where `coqidetop` sends its responses
     main_r: TcpStream,
@@ -18,16 +67,21 @@ pub struct IdeSlave {
     control_w: TcpStream,
     /// The `coqidetop` child process
     proc: Child,
-    /// Current state of the connection
+
+    ///
+    goal: File,
+    ///
+    result: File,
+
     state: SlaveState,
-    /// The state ID returned as a response to an `Init` call
-    root_id: i64,
-    /// The current state ID which must be forwarded to some calls
-    current_id: i64,
 }
 
 impl IdeSlave {
-    pub async fn init(file: String) -> io::Result<Self> {
+    pub async fn init(
+        file: String,
+        goal_buffer: &String,
+        result_buffer: &String,
+    ) -> io::Result<Self> {
         let listener1 = TcpListener::bind("127.0.0.1:0").await?;
         let listener2 = TcpListener::bind("127.0.0.1:0").await?;
         let listener3 = TcpListener::bind("127.0.0.1:0").await?;
@@ -71,9 +125,9 @@ impl IdeSlave {
             control_r,
             control_w,
             proc,
-            state: SlaveState::Connected,
-            root_id: -1,
-            current_id: -1,
+            goal: File::open(goal_buffer).await?,
+            result: File::open(result_buffer).await?,
+            state: Default::default(),
         })
     }
 
@@ -87,13 +141,19 @@ impl IdeSlave {
         log::debug!("`{}` responsed with `{:?}`", coqtop::COQTOP, response);
 
         match response {
-            ProtocolResult::Fail(line, col, v) => {
-                self.state = SlaveState::Error;
+            ProtocolResult::Fail(_line, _col, _v) => {
+                self.state.connection = ConnectionState::Error;
+
+
             }
             ProtocolResult::Good(ProtocolValue::StateId(state_id)) => {
-                if let ProtocolCall::Init(_) = call {
-                    // set the root state
-                    self.root_id = state_id;
+                match call {
+                    ProtocolCall::Init(_) => {
+                        // set the root state
+                        self.state.root_id = state_id;
+                        self.state.current_id = state_id;
+                    }
+                    _ => {}
                 }
             }
             ProtocolResult::Good(_) => unreachable!(),
@@ -102,11 +162,11 @@ impl IdeSlave {
         Ok(())
     }
 
-    pub fn current_id(&self) -> i64 {
-        if self.current_id != -1 {
-            self.current_id
+    pub fn current_state(&self) -> i64 {
+        if self.state.states.len() == 0 {
+            self.state.root_id
         } else {
-            self.root_id
+            self.state.current_id
         }
     }
 
@@ -125,14 +185,13 @@ impl IdeSlave {
         log::info!("Stopping `{}` process", crate::coqtop::COQTOP);
 
         self.proc.kill().await?;
-        self.state = SlaveState::Disconnected;
+
+        log::debug!("Closing buffers");
+        self.goal.shutdown().await?;
+        self.result.shutdown().await?;
+
+        self.state = Default::default();
 
         Ok(())
     }
-}
-
-pub enum SlaveState {
-    Connected,
-    Disconnected,
-    Error,
 }

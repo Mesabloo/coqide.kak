@@ -1,7 +1,7 @@
 use super::command::{Command, CommandKind};
 use crate::coqtop::slave::IdeSlave;
 use std::io;
-use tokio::fs::File;
+use tokio::{fs::File, io::AsyncWriteExt};
 use unix_named_pipe as fifos;
 
 pub struct CommandProcessor {
@@ -12,8 +12,8 @@ pub struct CommandProcessor {
 
 impl CommandProcessor {
     pub async fn init(pipes_path: String, session: String, slave: IdeSlave) -> io::Result<Self> {
-        log::debug!("Opening command pipe '{}/cmd'", pipes_path);
-        let pipe = File::from(fifos::open_read(format!("{}/cmd", pipes_path))?);
+        log::debug!("Opening command pipe '{}'", pipes_path);
+        let pipe = File::from(fifos::open_read(pipes_path)?);
         log::debug!("Pipe opened!");
 
         Ok(CommandProcessor {
@@ -23,8 +23,9 @@ impl CommandProcessor {
         })
     }
 
-    pub async fn kill_session(self) -> io::Result<()> {
+    pub async fn kill_session(mut self) -> io::Result<()> {
         self.ide_slave.quit().await?;
+        self.pipe.shutdown().await?;
 
         Ok(())
     }

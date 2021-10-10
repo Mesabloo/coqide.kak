@@ -60,6 +60,12 @@ declare-option -docstring "
 define-command -docstring "
   Start `coqide-kak` for the current buffer.  
 " -params 0 coqide-start %{
+  evaluate-commands %sh{
+    if [ -n "$kak_opt_coqide_pid" ]; then
+      echo 'fail "coqide: already started in buffer"'
+    fi
+  }
+  
   set-option buffer coqide_buffer %val{buffile}
   set-option buffer coqide_processed_range %val{timestamp} '1.1,1.1|coqide_processed'
   
@@ -113,41 +119,31 @@ define-command -docstring "
     eline=${eline:-0}
     ecol=${ecol:-0}
 
-    all_selections="$kak_selections_desc"
-    first_selection=$(sort -g <<< "${all_selections// /$'\n'}" | uniq | head -1)
-    IFS=".,|" read -r _ _ sline scol <<< "$first_selection"
+    first_selection=$(sort -g <<< "${kak_selections_desc// /$'\n'}" | uniq | head -1)
+    IFS=".,|" read -r _ _ sline scol _ <<< "$first_selection"
 
     if [ "$sline" -lt "$eline" -o "$sline" -eq "$eline" -a "$scol" -lt "$ecol" ]; then
       # NOTE: `-a` has a bigger precedence than `-o`, so the test above is really
       #       `$sline < $eline || ($sline == $eline && $scol < $ecol)`
 
-      # jump to the first `.` before the first selection, and only keep this selection
-      # echo '
-      #   try %{
-      #     execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>"
-      #   }'
-      # echo 'set-register slash "\."'
-      # echo 'execute-keys "<a-N><space>"'
-      # echo 'coqide-back-to'
-      echo "coqide-invalidate-state"
+      echo "coqide-invalidate-state $sline $scol"
     fi
   }
 }
 
 define-command -docstring "
-  Invalidates the current processed state at least until the first selection.
+  `coqide-invalidate-state <line> <col>`: Invalidates the current processed state at least until the first selection (indicated by the 2 parameters).
+  - `<line>`: the line number where the first selection lies
+  - `<col>`: the column number (character offset) where the first selection lies
 
-  If the first selection does not point to a `.`, then the state is rewund back until the last `.` before.
-" - hidden -params 0 coqide-invalidate-state %{
+  Warning: this command must /NOT/ be called by hand at all, unless trying to debug its behavior.
+  It makes strong assumptions about the current state (basically that the first selection in the buffer is
+  before the end of the current tip).
+" -hidden -params 2 coqide-invalidate-state %{
   evaluate-commands -draft -save-regs "/" %sh {
-
+    try %{ execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>" }
+    coqide-send-to-process "rewind-to %arg{0} %arg{1}"
   }
-}
-
-define-command -docstring "
-  Goes back to the last processed statement before the main cursor.
-" -hidden -params 0 coqide-back-to %{
-  
 }
 
 define-command -docstring "
@@ -177,17 +173,17 @@ define-command -docstring "
 define-command -docstring "
   Cancel the lastly processed Coq statement.  
 " -params 0 coqide-previous %{
-  # TODO
+  coqide-send-to-process %{previous}
 }
 
 define-command -docstring "
   Send the next Coq statement.
 " -params 0 coqide-next %{
-  # TODO
+  # TODO: get the next statement, and send it to add to the daemon
 }
 
 define-command -docstring "
-  Sends a command to the coqide-kak process.
+  `coqide-send-to-process <cmd>`: sends a command to the coqide-kak process.
 " -hidden -params 1 coqide-send-to-process %{
   nop %sh{
     echo "$1" >> "$kak_opt_coqide_pipe/cmd"
@@ -198,7 +194,7 @@ define-command -docstring "
 define-command -docstring "
   Dump the log in a specific buffer for user examination.
 " -params 0 coqide-dump-log %{
-  edit! -debug -readonly -fifo "%opt{coqide_pipe}/log" "%opt{coqide_log_buffer}"
+  edit! -debug -readonly -fifo "%opt{coqide_pipe}/log" -scroll "%opt{coqide_log_buffer}"
 }
 
 define-command -docstring "
@@ -206,6 +202,12 @@ define-command -docstring "
 
   Also deletes the control pipe.
 " -params 0 coqide-stop %{
+  evaluate-commands %sh{
+    if [ -z "$kak_opt_coqide_pid" ]; then
+      echo 'fail "coqide: not started in current buffer"'
+    fi
+  }
+  
   remove-hooks buffer coqide
 
   # NOTE: do not put all those lines in the same `try` block, as we want to be able
@@ -214,9 +216,13 @@ define-command -docstring "
   try %{ delete-buffer! "%opt{coqide_goal_buffer}" }
   try %{ delete-buffer! "%opt{coqide_result_buffer}" }
 
-  nop %sh{
-    kill -INT "$kak_opt_coqide_pid"
-    rm -r "$kak_opt_coqide_pipe"
+  try %{
+    evaluate-commands %sh{
+      if ! kill -INT "$kak_opt_coqide_pid" &>/dev/null; then
+        echo 'fail "coqide: process %opt{coqide_pid} already dead"'
+      fi
+      rm -r "$kak_opt_coqide_pipe"
+    }
   }
 
   remove-highlighter buffer/coqide_processed

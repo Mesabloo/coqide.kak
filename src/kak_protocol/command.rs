@@ -4,18 +4,7 @@ use crate::{
     xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolValue},
 };
 use bytes::Buf;
-use combine::{
-    choice, easy,
-    error::ParseError,
-    parser,
-    parser::{
-        combinator::{any_partial_state, AnyPartialState},
-        range::range,
-        token,
-    },
-    stream::PartialStream,
-    RangeStream,
-};
+use combine::{RangeStream, choice, easy, error::{ParseError, ParseErrorInto, UnexpectedParse}, from_str, many, parser, parser::{byte::{digit, newline, space}, combinator::{any_partial_state, AnyPartialState}, range::range, token}, skip_many1, stream::PartialStream};
 use futures::TryStreamExt;
 use std::io;
 use tokio::fs::File;
@@ -32,6 +21,7 @@ pub enum CommandKind {
     Init,
     Previous,
     Nop,
+    RewindTo(i64, i64),
 }
 
 impl<'a> Command<'a> {
@@ -84,12 +74,13 @@ impl<'a> Command<'a> {
                                 )
                                 .await
                             }
-                            _ => Ok(())
+                            _ => Ok(()),
                         }
                     }
                     _ => Ok(()),
                 }
             }
+            CommandKind::RewindTo(line, col) => Ok(()),
             CommandKind::Nop => Ok(()),
         }
     }
@@ -161,7 +152,7 @@ parser! {
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(choice((parse_init(), parse_previous(), ignore_byte())))
+        any_partial_state(choice((parse_init(), parse_previous(), parse_rewind(), ignore_byte())))
     }
 }
 
@@ -188,6 +179,30 @@ parser! {
     ]
     {
         any_partial_state(range(&b"previous\n"[..])).map(|_| CommandKind::Previous)
+    }
+}
+
+parser! {
+    type PartialState = AnyPartialState;
+
+    fn parse_rewind['a, Input]()(Input) -> CommandKind
+    where [
+        Input: RangeStream<Token = u8, Range = &'a [u8]>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+    ]
+    {
+        any_partial_state((
+            range(&b"rewind-to"[..]).map(|_| ()),
+            skip_many1(space()),
+            from_str::<_, String, _>(many::<Vec<_>, _, _>(digit())),
+            skip_many1(space()),
+            from_str::<_, String, _>(many::<Vec<_>, _, _>(digit())),
+            newline()
+        )).map(|(_, _, line, _, col, _)| {
+            let line = line.parse::<i64>().unwrap();
+            let col = col.parse::<i64>().unwrap();
+            CommandKind::RewindTo(line, col)
+        })
     }
 }
 

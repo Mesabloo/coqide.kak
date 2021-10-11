@@ -140,9 +140,9 @@ define-command -docstring "
   It makes strong assumptions about the current state (basically that the first selection in the buffer is
   before the end of the current tip).
 " -hidden -params 2 coqide-invalidate-state %{
-  evaluate-commands -draft -save-regs "/" %sh {
+  evaluate-commands -draft -save-regs "/" %{
     try %{ execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>" }
-    coqide-send-to-process "rewind-to %arg{0} %arg{1}"
+    coqide-send-to-process "rewind-to %arg{1} %arg{2}"
   }
 }
 

@@ -161,7 +161,7 @@ impl ProtocolValue {
         }
     }
 
-    pub async fn decode_stream<R>(stream: R) -> io::Result<ProtocolValue>
+    pub async fn decode_stream<R>(stream: R) -> io::Result<Self>
     where
         R: AsyncRead + Unpin,
     {
@@ -262,7 +262,7 @@ impl ProtocolRichPP {
 
         for node in inner2.children {
             if let Some(elem) = node.as_node() {
-                raw = format!("{}<{}>{}</{}>", raw, elem.name, elem.get_text(), elem.name);
+                raw += format!("<{}>{}</{}>", elem.name, elem.get_text(), elem.name).as_str();
             }
             if let Some(txt) = node.raw() {
                 raw += txt;

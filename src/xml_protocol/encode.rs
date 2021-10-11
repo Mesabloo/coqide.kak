@@ -38,6 +38,7 @@ impl ProtocolCall {
     pub fn encode(self) -> String {
         match self {
             Init(val) => format!("<call val=\"Init\">{}</call>", val.encode()),
+            EditAt(state_id) => format!("<call val=\"Edit_at\">{}</call>", StateId(state_id).encode()),
             Quit => format!("<call val=\"Quit\">{}</call>", Unit.encode()),
         }
     }

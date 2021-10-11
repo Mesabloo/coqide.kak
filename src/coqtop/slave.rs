@@ -1,14 +1,22 @@
 use crate::{
     coqtop,
-    xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolValue},
+    kak_protocol::kakoune::kakoune,
+    xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolRichPP},
 };
 use bimap::BiMap;
-use std::io;
+use std::{fmt::Display, io};
 use tokio::{
     fs::File,
     net::{TcpListener, TcpStream},
 };
 use tokio::{io::AsyncWriteExt, join, process::Child};
+
+pub struct ExtState {
+    pub session: String,
+    pub goal_buffer: String,
+    pub result_buffer: String,
+    pub buffer: String,
+}
 
 ///
 pub enum ConnectionState {
@@ -23,13 +31,32 @@ impl Default for ConnectionState {
     }
 }
 
-#[derive(Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Hash, Clone)]
 ///
 pub struct Range {
     /// The beginning of the range, encoded as `(line, column)`
-    begin: (u64, u64),
+    pub begin: (u64, u64),
     /// The end of the range, encoded as `(line, column)`
-    end: (u64, u64),
+    pub end: (u64, u64),
+}
+
+impl Default for Range {
+    fn default() -> Self {
+        Range {
+            begin: (1, 1),
+            end: (1, 1),
+        }
+    }
+}
+
+impl Display for Range {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}.{},{}.{}",
+            self.begin.0, self.begin.1, self.end.0, self.end.1
+        )
+    }
 }
 
 /// The current state of the slave
@@ -74,11 +101,14 @@ pub struct IdeSlave {
     result: File,
 
     state: SlaveState,
+
+    pub ext_state: ExtState,
 }
 
 impl IdeSlave {
     pub async fn init(
         file: String,
+        session: &String,
         goal_buffer: &String,
         result_buffer: &String,
     ) -> io::Result<Self> {
@@ -96,7 +126,7 @@ impl IdeSlave {
             "-async-proofs".to_string(),
             "on".to_string(),
             "-topfile".to_string(),
-            file,
+            file.clone(),
         ];
         let ports = [
             listener1.local_addr()?.port(),
@@ -128,10 +158,16 @@ impl IdeSlave {
             goal: File::open(goal_buffer).await?,
             result: File::open(result_buffer).await?,
             state: Default::default(),
+            ext_state: ExtState {
+                session: session.clone(),
+                goal_buffer: goal_buffer.clone(),
+                result_buffer: result_buffer.clone(),
+                buffer: file,
+            },
         })
     }
 
-    pub async fn send_call(&mut self, call: ProtocolCall) -> io::Result<()> {
+    pub async fn send_call(&mut self, call: ProtocolCall) -> io::Result<ProtocolResult> {
         log::debug!("Sending call '{:?}' to `{}`", call, coqtop::COQTOP);
         self.main_w
             .write_all(call.clone().encode().as_bytes())
@@ -140,26 +176,61 @@ impl IdeSlave {
         let response = ProtocolResult::decode_stream(&mut self.main_r).await?;
         log::debug!("`{}` responsed with `{:?}`", coqtop::COQTOP, response);
 
-        match response {
-            ProtocolResult::Fail(_line, _col, _v) => {
-                self.state.connection = ConnectionState::Error;
+        Ok(response)
+    }
 
+    pub fn set_root_id(&mut self, id: i64) {
+        self.state.root_id = id;
+    }
 
+    pub fn set_current_id(&mut self, id: i64) {
+        self.state.current_id = id;
+    }
+
+    pub fn get_root_id(&self) -> i64 {
+        self.state.root_id
+    }
+
+    pub fn get_range(&self, id: i64) -> Range {
+        self.state
+            .states
+            .get_by_right(&id)
+            .cloned()
+            .unwrap_or_else(|| Default::default())
+    }
+
+    pub async fn error(
+        &mut self,
+        line: Option<i64>,
+        col: Option<i64>,
+        richpp: ProtocolRichPP,
+    ) -> io::Result<()> {
+        self.state.connection = ConnectionState::Error;
+
+        match richpp {
+            ProtocolRichPP::Raw(str) => {
+                self.result.write_all(str.as_bytes()).await?;
+                kakoune(
+                    self.ext_state.session.clone(),
+                    format!(
+                        r#"evaluate-commands -buffer "%opt{{coqide_result_buffer}}" %{{
+                          execute-keys "%|cat {}<ret>"
+                        }}"#,
+                        self.ext_state.result_buffer
+                    ),
+                )
+                .await
             }
-            ProtocolResult::Good(ProtocolValue::StateId(state_id)) => {
-                match call {
-                    ProtocolCall::Init(_) => {
-                        // set the root state
-                        self.state.root_id = state_id;
-                        self.state.current_id = state_id;
-                    }
-                    _ => {}
-                }
-            }
-            ProtocolResult::Good(_) => unreachable!(),
         }
+    }
 
-        Ok(())
+    pub async fn back(&mut self, nb_steps: i64) -> io::Result<ProtocolResult> {
+        let new_state_id = (self.state.states.len() as i64 - nb_steps).max(self.state.root_id);
+        self.state
+            .states
+            .retain(|_, state_id| state_id < &new_state_id);
+
+        self.send_call(ProtocolCall::EditAt(new_state_id)).await
     }
 
     pub fn current_state(&self) -> i64 {
@@ -191,6 +262,7 @@ impl IdeSlave {
         self.result.shutdown().await?;
 
         self.state = Default::default();
+        self.state.connection = ConnectionState::Disconnected;
 
         Ok(())
     }

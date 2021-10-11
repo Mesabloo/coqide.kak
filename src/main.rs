@@ -49,7 +49,7 @@ async fn main() -> io::Result<()> {
     let _handle = logger::init(&log_path)?;
 
     // Setup IDE slave and command processor
-    let slave = IdeSlave::init(kak_buffer.clone(), &goal_path, &result_path).await?;
+    let slave = IdeSlave::init(kak_buffer.clone(), &kak_session, &goal_path, &result_path).await?;
     let mut kak_processor =
         CommandProcessor::init(cmd_path, kak_session.clone(), slave).await?;
 

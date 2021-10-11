@@ -59,4 +59,6 @@ pub enum ProtocolCall {
     Init(ProtocolValue),
     /// Quit
     Quit,
+    /// Go back to a previous state
+    EditAt(i64),
 }

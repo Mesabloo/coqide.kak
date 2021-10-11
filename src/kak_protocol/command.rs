@@ -1,6 +1,7 @@
 use crate::{
-    coqtop::slave::IdeSlave,
-    xml_protocol::types::{ProtocolCall, ProtocolValue},
+    coqtop::slave::{IdeSlave, Range},
+    kak_protocol::kakoune::kakoune,
+    xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolValue},
 };
 use bytes::Buf;
 use combine::{
@@ -29,6 +30,7 @@ pub struct Command<'a> {
 #[derive(Debug)]
 pub enum CommandKind {
     Init,
+    Previous,
     Nop,
 }
 
@@ -36,9 +38,51 @@ impl<'a> Command<'a> {
     pub async fn execute(self) -> io::Result<()> {
         match self.kind {
             CommandKind::Init => {
-                self.slave
+                let resp = self
+                    .slave
                     .send_call(ProtocolCall::Init(ProtocolValue::Optional(None)))
-                    .await
+                    .await?;
+                match resp {
+                    ProtocolResult::Fail(line, col, msg) => self.slave.error(line, col, msg).await,
+                    ProtocolResult::Good(ProtocolValue::StateId(state_id)) => {
+                        // set the root state
+                        self.slave.set_root_id(state_id);
+                        self.slave.set_current_id(state_id);
+
+                        Ok(())
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            CommandKind::Previous => {
+                let resp = self.slave.back(1).await?;
+                match resp {
+                    ProtocolResult::Fail(line, col, msg) => self.slave.error(line, col, msg).await,
+                    _ => {
+                        // TODO: do not accept any response, only <feedback>
+                        let current_state = self.slave.current_state();
+                        let range = if current_state == self.slave.get_root_id() {
+                            Default::default()
+                        } else {
+                            Range {
+                                begin: (1, 1),
+                                end: self.slave.get_range(current_state).end,
+                            }
+                        };
+
+                        log::debug!("Updating processed range...");
+                        kakoune(
+                            self.session.clone(),
+                            format!(
+                                r#"evaluate-commands -buffer {} %{{
+                                  set-option buffer coqide_processed_range %val{{timestamp}} '{}|coqide_processed'
+                                }}"#,
+                                self.slave.ext_state.buffer, range,
+                            ),
+                        )
+                        .await
+                    }
+                }
             }
             CommandKind::Nop => Ok(()),
         }
@@ -111,7 +155,7 @@ parser! {
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(choice((parse_init(), ignore_byte())))
+        any_partial_state(choice((parse_init(), parse_previous(), ignore_byte())))
     }
 }
 
@@ -124,7 +168,20 @@ parser! {
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(range(&b"init\n"[..]).map(|_| CommandKind::Init))
+        any_partial_state(range(&b"init\n"[..])).map(|_| CommandKind::Init)
+    }
+}
+
+parser! {
+    type PartialState = AnyPartialState;
+
+    fn parse_previous['a, Input]()(Input) -> CommandKind
+    where [
+        Input: RangeStream<Token = u8, Range = &'a [u8]>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+    ]
+    {
+        any_partial_state(range(&b"previous\n"[..])).map(|_| CommandKind::Previous)
     }
 }
 

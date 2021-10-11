@@ -58,30 +58,36 @@ impl<'a> Command<'a> {
                 let resp = self.slave.back(1).await?;
                 match resp {
                     ProtocolResult::Fail(line, col, msg) => self.slave.error(line, col, msg).await,
-                    _ => {
+                    ProtocolResult::Feedback(_, _, _, content) => {
                         // TODO: do not accept any response, only <feedback>
-                        let current_state = self.slave.current_state();
-                        let range = if current_state == self.slave.get_root_id() {
-                            Default::default()
-                        } else {
-                            Range {
-                                begin: (1, 1),
-                                end: self.slave.get_range(current_state).end,
-                            }
-                        };
+                        match content.attributes.get("val").map(|str| str.as_str()) {
+                            Some("processed") => {
+                                let current_state = self.slave.current_state();
+                                let range = if current_state == self.slave.get_root_id() {
+                                    Default::default()
+                                } else {
+                                    Range {
+                                        begin: (1, 1),
+                                        end: self.slave.get_range(current_state).end,
+                                    }
+                                };
 
-                        log::debug!("Updating processed range...");
-                        kakoune(
-                            self.session.clone(),
-                            format!(
-                                r#"evaluate-commands -buffer {} %{{
-                                  set-option buffer coqide_processed_range %val{{timestamp}} '{}|coqide_processed'
-                                }}"#,
-                                self.slave.ext_state.buffer, range,
-                            ),
-                        )
-                        .await
+                                log::debug!("Updating processed range...");
+                                kakoune(
+                                    self.session.clone(),
+                                    format!(
+                                        r#"evaluate-commands -buffer {} %{{
+                                          set-option buffer coqide_processed_range %val{{timestamp}} '{}|coqide_processed'
+                                        }}"#,
+                                        self.slave.ext_state.buffer, range,
+                                    ),
+                                )
+                                .await
+                            }
+                            _ => Ok(())
+                        }
                     }
+                    _ => Ok(()),
                 }
             }
             CommandKind::Nop => Ok(()),

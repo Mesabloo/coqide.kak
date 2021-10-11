@@ -43,7 +43,10 @@ pub enum ProtocolResult {
     Good(ProtocolValue),
     /// An error occured
     Fail(Option<i64>, Option<i64>, ProtocolRichPP),
+    /// Feedback from the daemon
+    Feedback(String, String, ProtocolValue, XMLNode),
 }
+
 
 /// The type of pretty-printed text
 #[derive(Debug)]

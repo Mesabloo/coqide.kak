@@ -34,12 +34,12 @@ async fn main() -> io::Result<()> {
     let cmd_path = format!("{}/cmd", &kak_pipe_dirs);
 
     // NOTE: create FIFOs and files separately
-    for path in [&cmd_path, &log_path] {
+    for path in [&cmd_path] {
         if !Path::new(path).exists() {
             fifos::create(path, None)?;
         }
     }
-    for path in [&goal_path, &result_path] {
+    for path in [&goal_path, &result_path, &log_path] {
         if !Path::new(path).exists() {
             File::create(path)?;
         }

@@ -21,6 +21,7 @@ pub enum DecodeError {
     InvalidValue,
     InvalidRichPP,
     InvalidStateId,
+    InvalidFeedback,
 }
 
 use DecodeError::*;
@@ -39,6 +40,7 @@ impl std::fmt::Debug for DecodeError {
             InvalidValue => write!(f, "Invalid <value/> tag"),
             InvalidRichPP => write!(f, "Invalid <richpp/> tag"),
             InvalidStateId => write!(f, "Invalid <state_id/> tag"),
+            InvalidFeedback => write!(f, "Invalid <feedback/> tag"),
         }
     }
 }
@@ -227,6 +229,21 @@ impl ProtocolResult {
                         format!("{:?}", InvalidValue),
                     )),
                 }
+            }
+            "feedback" => {
+                assert_decode_error(!xml.attributes.is_empty(), || InvalidFeedback)?;
+                assert_decode_error(!xml.children.is_empty(), || InvalidFeedback)?;
+                assert_decode_error(xml.attributes.get("object").is_some(), || InvalidFeedback)?;
+                assert_decode_error(xml.attributes.get("route").is_some(), || InvalidFeedback)?;
+
+                let object = xml.attributes.get("object").unwrap().clone();
+                let route = xml.attributes.get("route").unwrap().clone();
+
+                let state_id = xml.children[0].as_node().cloned().unwrap();
+                let feedback_content = xml.children[1].as_node().cloned().unwrap();
+
+                ProtocolValue::decode(state_id)
+                    .map(|val| ProtocolResult::Feedback(object, route, val, feedback_content))
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,

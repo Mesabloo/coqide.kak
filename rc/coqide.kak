@@ -1,5 +1,5 @@
 # Interface:
-# - coqide_command:    custom the command used to launch the backend
+# - coqide_command:    the command used to launch the backend
 # - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
 # - coqide-start:      start the backend daemon and try to connect to it
 # - coqide-stop:       stop the daemon, give up on the processed state and remove logs
@@ -9,8 +9,8 @@
 # - coqide-move-to:    move to the end of the next Coq statement (from the main cursor) and try to process until this point
 
 declare-option -docstring "
-  Command to launch `coqide-kak`.
-" str coqide_command "coqide-kak"
+  Command to launch `coqide-daemon`.
+" str coqide_command "coqide-daemon"
 
 set-face global coqide_processed default,black
 

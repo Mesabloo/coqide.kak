@@ -9,9 +9,9 @@ use combine::{
     stream::PartialStream,
     ParseError, RangeStream,
 };
-use futures::TryStreamExt;
 use std::{collections::HashMap, io};
 use tokio::io::AsyncRead;
+use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
 
 #[derive(Clone, Debug)]
@@ -102,7 +102,9 @@ impl XMLNode {
             .try_next()
             .await
             .and_then(|opt| {
-                opt.ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "Cannot fetch next XML node"))
+                opt.ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::BrokenPipe, "Cannot fetch next XML node")
+                })
             })
     }
 

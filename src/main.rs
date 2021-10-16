@@ -4,11 +4,9 @@
 
 use std::{cell::RefCell, env, io, path::Path, rc::Rc, sync::Arc};
 
-use signal_hook::{
-    consts::{SIGINT, SIGUSR1},
-    iterator::Signals,
-};
-use tokio::{fs::File, sync::RwLock};
+use async_signals::Signals;
+use tokio::{fs::File, sync::{Mutex, RwLock, mpsc, oneshot, watch}};
+use tokio_stream::StreamExt;
 
 use crate::{
     coqtop::slave::IdeSlave,
@@ -77,34 +75,40 @@ async fn main() -> io::Result<()> {
         ideslave.clone(),
         state.clone(),
     )?);
+
+    let (runs_tx, runs_rx) = watch::channel(());
+    
     // Initialise the command processor
     log::debug!("Starting command processing");
     let processor = Arc::new(RwLock::new(CommandProcessor::new(
         session.clone(),
         kakslave.clone(),
+        runs_rx.clone(),
     )?));
     let processor_ = processor.clone();
+
 
     let process_thread = tokio::task::spawn(async move {
         log::debug!("Start waiting for commands");
 
-        processor.write().await.start().await?;
+        processor.write().await.start(runs_rx).await?;
 
         Ok::<_, io::Error>(())
     });
 
-    let mut signals = Signals::new(&[SIGINT])?;
-    let signals_handle = signals.handle();
+    let mut signals = Signals::new(vec![libc::SIGINT]).unwrap();
     let signals_thread = tokio::spawn(async move {
-        signals.wait().next();
+        signals.next().await;
         log::debug!("Received signal SIGINT");
 
-        process_thread.abort();
+        runs_tx.send(()).map_err(|err| {
+            io::Error::new(io::ErrorKind::BrokenPipe, format!("Broken pipe: {:?}", err))
+        })?;
+        process_thread.await??;
 
         log::debug!("Stopping daemon");
 
         processor_.write().await.stop().await?;
-        signals_handle.close();
 
         Ok::<_, io::Error>(())
     });
@@ -119,6 +123,8 @@ async fn main() -> io::Result<()> {
 
     signals_thread.await??;
 
+    log::debug!("Dropping all resources...");
+
     drop(kakslave);
     drop(state);
 
@@ -127,6 +133,8 @@ async fn main() -> io::Result<()> {
     } else {
         log::error!("Unable to drop the IDE slave. Some sockets may be left alive");
     }
+
+    log::info!("All sockets/processes/files successfully dropped. Exiting");
 
     Ok(())
 }

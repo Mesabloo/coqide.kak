@@ -1,20 +1,23 @@
 use std::{
+    borrow::{Borrow, BorrowMut},
     cell::RefCell,
     future::Future,
     io,
+    ops::{Deref, DerefMut},
     rc::Rc,
     sync::{
         atomic::{self, AtomicBool},
-        Arc,
+        Arc, Mutex,
     },
 };
 
-use signal_hook::{consts::SIGUSR1, iterator::Signals};
+use async_signals::Signals;
 use tokio::{
     fs::File,
-    sync::{mpsc, RwLock},
+    sync::{mpsc, oneshot, watch},
     task::JoinHandle,
 };
+use tokio_stream::StreamExt;
 
 use crate::{
     coqtop::{
@@ -33,96 +36,102 @@ pub struct CommandProcessor {
     session: Arc<SessionWrapper>,
     kakslave: Arc<KakSlave>,
 
-    todo_rx: Arc<RwLock<mpsc::UnboundedReceiver<Command>>>,
-    todo_tx_handle: Arc<JoinHandle<io::Result<()>>>,
+    todo_rx: mpsc::UnboundedReceiver<Command>,
+    todo_tx_handle: JoinHandle<io::Result<()>>,
+}
 
-    running: Arc<AtomicBool>,
+async fn receive_from_pipe(
+    session: Arc<SessionWrapper>,
+    todo_tx: mpsc::UnboundedSender<Command>,
+    mut must_run_rx: watch::Receiver<()>,
+) -> io::Result<()> {
+    let mut signals = Signals::new(vec![libc::SIGUSR1]).unwrap();
+    let mut pipe = File::from(unix_named_pipe::open_read(command_file(session.clone()))?);
+    log::debug!("Command pipe opened");
+
+    'global_handler: loop {
+        tokio::select! {
+            Ok(_) = must_run_rx.changed() => return Ok(()),
+            Some(_) = signals.next() => {
+                log::debug!("Received a SIGUSR1. Trying to process the next command");
+
+                match receive_commands(todo_tx.clone(), &mut pipe).await? {
+                    None => break 'global_handler Ok(()),
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+}
+
+async fn receive_commands(
+    todo_tx: mpsc::UnboundedSender<Command>,
+    pipe: &mut File,
+) -> io::Result<Option<()>> {
+    loop {
+        match Command::parse_from(pipe).await? {
+            None => break Ok(None),
+            Some(None) => {}
+            Some(Some(cmd)) => {
+                log::debug!("Command '{:?}' sent through internal channel", cmd);
+
+                todo_tx.send(cmd).map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::NotConnected,
+                        format!("Could not send command to channel: {:?}", err),
+                    )
+                })?;
+
+                break Ok(Some(()));
+            }
+        }
+    }
 }
 
 impl CommandProcessor {
-    pub fn new(session: Arc<SessionWrapper>, kakslave: Arc<KakSlave>) -> io::Result<Self> {
-        let running = Arc::new(AtomicBool::new(true));
-        let running_ = running.clone();
-
-        let session_ = session.clone();
-
+    pub fn new(
+        session: Arc<SessionWrapper>,
+        kakslave: Arc<KakSlave>,
+        must_run_rx: watch::Receiver<()>,
+    ) -> io::Result<Self> {
         let (todo_tx, todo_rx) = mpsc::unbounded_channel();
-        let todo_tx_handle = Arc::new(tokio::spawn(async move {
-            let mut signals = Signals::new(&[SIGUSR1])?;
-            let mut pipe = File::from(unix_named_pipe::open_read(command_file(session_.clone()))?);
-            log::debug!("Command pipe opened");
-
-            let handle = signals.handle();
-
-            let mut res: io::Result<()> = Ok(());
-
-            'global_handler: while running_.load(atomic::Ordering::Relaxed) {
-                signals.wait().next(); // wait until a SIGUSR1 has been received
-                log::debug!("Received a SIGUSR1. Trying to process the next command");
-
-                while running_.load(atomic::Ordering::Relaxed) {
-                    match Command::parse_from(&mut pipe).await? {
-                        None => {
-                            res = Ok(()); // Err(io::Error::new(io::ErrorKind::BrokenPipe, "Broken pipe")),
-                            break 'global_handler;
-                        }
-                        Some(None) => {}
-                        Some(Some(cmd)) => {
-                            todo_tx.send(cmd).map_err(|err| {
-                                io::Error::new(
-                                    io::ErrorKind::NotConnected,
-                                    format!("Could nbot send command to channel: {:?}", err),
-                                )
-                            })?;
-
-                            log::debug!("Command sent through internal channel");
-
-                            break;
-                        }
-                    }
-                }
-            }
-
-            handle.close();
-
-            res
-        }));
+        let todo_tx_handle = tokio::spawn(receive_from_pipe(
+            session.clone(),
+            todo_tx,
+            must_run_rx,
+        ));
 
         Ok(Self {
             session: session.clone(),
             kakslave,
-            todo_rx: Arc::new(RwLock::new(todo_rx)),
+            todo_rx,
             todo_tx_handle,
-            running,
         })
     }
 
-    pub async fn start(&mut self) -> io::Result<()> {
-        while self.running.load(atomic::Ordering::Relaxed) {
-            log::debug!("Trying to receive commands from internal channel...");
+    pub async fn start(&mut self, mut must_run_rx: watch::Receiver<()>) -> io::Result<()> {
+        loop {
+            tokio::select! {
+                Ok(_) = must_run_rx.changed() => return Ok(()),
+                cmd = self.todo_rx.recv() => {
+                    match cmd {
+                        None => {
+                            log::warn!("Channel closed: no more commands can be received");
+                            return Ok(());
+                        }
+                        Some(cmd) => {
+                            log::debug!("Received command `{:?}` from internal channel", cmd);
 
-            let cmd = { self.todo_rx.write().await.recv().await };
-            match cmd {
-                None => {
-                    log::warn!("Channel closed: no more commands can be received");
-                    return Ok(());
-                }
-                Some(cmd) => {
-                    log::debug!("Received command `{:?}` from internal channel", cmd);
-
-                    self.try_process_command(cmd).await?;
+                            self.try_process_command(cmd).await?;
+                        }
+                    }
                 }
             }
         }
-
-        Ok(())
     }
 
     pub async fn stop(&mut self) -> io::Result<()> {
-        self.running.store(false, atomic::Ordering::Relaxed);
-
-        self.todo_rx.write().await.close();
-        (&self.todo_tx_handle).abort();
+        self.todo_rx.close();
 
         Ok(())
     }

@@ -6,7 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-signal-hook = { version = "0.3.10", features = ["iterator"] }
+async-signals = "0.3.1"
+libc = "0.2.104"
+#signal-hook = { version = "0.3.10", features = ["iterator"] }
 exitcode = "1.1.2"
 log = "0.4.14"
 log4rs = "1.0.0"

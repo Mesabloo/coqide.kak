@@ -41,6 +41,8 @@ struct XMLDecoder {
     state: AnyPartialState,
 }
 
+unsafe impl Send for XMLDecoder {}
+
 impl Default for XMLDecoder {
     fn default() -> Self {
         XMLDecoder {

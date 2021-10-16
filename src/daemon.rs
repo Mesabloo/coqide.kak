@@ -33,3 +33,13 @@ impl Default for DaemonState {
         }
     }
 }
+
+impl DaemonState {
+    pub fn set_root_id(&mut self, id: i64) {
+        self.root_id = id;
+    }
+
+    pub fn set_current_id(&mut self, id: i64) {
+        self.current_id = id;
+    }
+}

@@ -2,17 +2,25 @@
 #![feature(try_trait_v2)]
 #![feature(async_closure)]
 
-use std::{env, io, path::Path, rc::Rc, sync::Arc};
+use std::{cell::RefCell, env, io, path::Path, rc::Rc, sync::Arc};
 
 use signal_hook::{
     consts::{SIGINT, SIGUSR1},
     iterator::Signals,
 };
-use tokio::fs::File;
+use tokio::{fs::File, sync::RwLock};
 
-use crate::{coqtop::{slave::IdeSlave, xml_protocol::types::{ProtocolCall, ProtocolValue}}, daemon::DaemonState, kakoune::{command_line::kak, commands::processor::CommandProcessor, session::SessionWrapper, slave::{KakSlave, command_file}}, result::{goal::goal_file, result::result_file}};
-
-
+use crate::{
+    coqtop::slave::IdeSlave,
+    daemon::DaemonState,
+    kakoune::{
+        command_line::kak,
+        commands::processor::CommandProcessor,
+        session::SessionWrapper,
+        slave::{command_file, KakSlave},
+    },
+    result::{goal::goal_file, result::result_file},
+};
 
 mod coqtop;
 mod daemon;
@@ -56,18 +64,50 @@ async fn main() -> io::Result<()> {
 
     // Initialise the IDE slave
     log::debug!("Initialising IDE slave");
-    let ideslave = Rc::new(IdeSlave::new(session.clone(), coq_file.clone()).await?);
+    let ideslave = Arc::new(RwLock::new(
+        IdeSlave::new(session.clone(), coq_file.clone()).await?,
+    ));
     // Initialise the daemon state
     log::debug!("Creating daemon state");
-    let mut state = DaemonState::default();
-    // Initialise the command processor
-    log::debug!("Starting command processing");
-    let mut processor = CommandProcessor::new(session.clone(), ideslave.clone())?;
+    let state = Arc::new(RwLock::new(DaemonState::default()));
     // Initialise the Kakoune slave
     log::debug!("Initialising Kakoune slave");
-    let mut kakslave = KakSlave::new(session.clone(), ideslave.clone(), &mut state)?;
+    let kakslave = Arc::new(KakSlave::new(
+        session.clone(),
+        ideslave.clone(),
+        state.clone(),
+    )?);
+    // Initialise the command processor
+    log::debug!("Starting command processing");
+    let processor = Arc::new(RwLock::new(CommandProcessor::new(
+        session.clone(),
+        kakslave.clone(),
+    )?));
+    let processor_ = processor.clone();
 
-    let mut signals = Signals::new(&[SIGINT, SIGUSR1])?;
+    let process_thread = tokio::task::spawn(async move {
+        log::debug!("Start waiting for commands");
+
+        processor.write().await.start().await?;
+
+        Ok::<_, io::Error>(())
+    });
+
+    let mut signals = Signals::new(&[SIGINT])?;
+    let signals_handle = signals.handle();
+    let signals_thread = tokio::spawn(async move {
+        signals.wait().next();
+        log::debug!("Received signal SIGINT");
+
+        process_thread.abort();
+
+        log::debug!("Stopping daemon");
+
+        processor_.write().await.stop().await?;
+        signals_handle.close();
+
+        Ok::<_, io::Error>(())
+    });
 
     log::debug!("Creating buffers in Kakoune");
     kak(session.clone(), format!(
@@ -77,24 +117,15 @@ async fn main() -> io::Result<()> {
                 coq_file, result_file(session.clone()), goal_file(session.clone()),
             )).await?;
 
-    for signal in signals.forever() {
-        log::debug!("Received signal {}", signal);
-      
-        if signal == SIGUSR1 {
-            processor.process_next_command(&mut kakslave).await?;
-        } else if signal == SIGINT {
-            break;
-        }
-    }
+    signals_thread.await??;
 
     drop(kakslave);
-    drop(processor);
     drop(state);
 
-    if let Ok(ideslave) = Rc::try_unwrap(ideslave) {
-        ideslave.quit().await?;
+    if let Ok(ideslave) = Arc::try_unwrap(ideslave) {
+        ideslave.into_inner().quit().await?;
     } else {
-        log::error!("Unable to drop the IDE slave");
+        log::error!("Unable to drop the IDE slave. Some sockets may be left alive");
     }
 
     Ok(())

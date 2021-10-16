@@ -1,3 +1,5 @@
+use std::{future::Future, io};
+
 use super::parser::XMLNode;
 
 #[derive(Debug, Clone)]
@@ -46,7 +48,6 @@ pub enum ProtocolResult {
     /// Feedback from the daemon
     Feedback(String, String, ProtocolValue, XMLNode),
 }
-
 
 /// The type of pretty-printed text
 #[derive(Debug)]

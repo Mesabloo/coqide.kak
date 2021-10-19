@@ -12,7 +12,10 @@ I chose to write the “backend” in Rust, mainly to discover, and because I fe
 
 The recommended way to install this plugin is through [plug.kak](https://github.com/andreyorst/plug.kak):
 ```sh
-plug "mesabloo/coqide.kak" config %{
+plug "mesabloo/coqide.kak" do %{
+  cargo build --release --locked
+  cargo install --force --path . --root ~/.local
+} config %{
   # configure this plugin here
 }
 ```

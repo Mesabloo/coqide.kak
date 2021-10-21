@@ -1,140 +1,138 @@
 #![feature(box_patterns)]
-#![feature(try_trait_v2)]
-#![feature(async_closure)]
 
-use std::{cell::RefCell, env, io, path::Path, rc::Rc, sync::Arc};
-
-use async_signals::Signals;
-use tokio::{fs::File, sync::{Mutex, RwLock, mpsc, oneshot, watch}};
-use tokio_stream::StreamExt;
-
-use crate::{
-    coqtop::slave::IdeSlave,
-    daemon::DaemonState,
-    kakoune::{
-        command_line::kak,
-        commands::processor::CommandProcessor,
-        session::SessionWrapper,
-        slave::{command_file, KakSlave},
-    },
-    result::{goal::goal_file, result::result_file},
+use std::{
+    env,
+    path::Path,
+    process::{exit, Stdio},
 };
 
+use async_signals::Signals;
+use tokio::{
+    fs::File,
+    io,
+    net::TcpListener,
+    sync::{mpsc, watch},
+};
+use tokio_stream::StreamExt;
+
+use crate::coqtop::xml_protocol::types::ProtocolResult;
+use crate::kakoune::commands::types::Command;
+use crate::{
+    channels::{CommandProcessor, CommandReceiver, ResponseProcessor, ResponseReceiver},
+    files::{goal_file, result_file, COQTOP},
+};
+
+mod channels;
 mod coqtop;
-mod daemon;
+mod files;
 mod kakoune;
 mod logger;
-mod result;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let args = env::args().collect::<Vec<_>>();
-    assert_eq!(
-        args.len(),
-        4,
-        "Help: <KAK_SESSION> <COQ_FILE> <KAK_TMP_DIR> ({} provided)",
-        args.len() - 1
-    );
+    if args.len() != 4 {
+        eprintln!(
+            "3 arguments needed: <KAK_SESSION> <COQ_FILE> <TMP_DIR>\n{} provided.",
+            args.len()
+        );
+
+        exit(exitcode::CONFIG);
+    }
+
     let kak_session = args[1].clone();
     let coq_file = args[2].clone();
-    let kak_tmp_dir = args[3].clone();
-
-    let session = Arc::new(SessionWrapper::new(kak_session, kak_tmp_dir));
+    let tmp_dir = args[3].clone();
 
     // Create all necessary files
-    for fun in &[logger::log_file, goal_file, result_file] {
-        let path = fun(session.clone());
+    for fun in &[
+        logger::log_file,
+        goal_file,
+        result_file, /*, command_file*/
+    ] {
+        let path = fun(&tmp_dir);
         let path = Path::new(&path);
         if !Path::exists(path) {
             File::create(&path).await?;
         }
     }
-    for fun in &[command_file] {
-        let path = fun(session.clone());
-        let path = Path::new(&path);
-        if !Path::exists(path) {
-            unix_named_pipe::create(path, None)?;
-        }
-    }
 
     // Initialise logging
-    let _handle = logger::init(logger::log_file(session.clone()))?;
+    let _handle = logger::init(logger::log_file(&tmp_dir))?;
 
-    // Initialise the IDE slave
-    log::debug!("Initialising IDE slave");
-    let ideslave = Arc::new(RwLock::new(
-        IdeSlave::new(session.clone(), coq_file.clone()).await?,
-    ));
-    // Initialise the daemon state
-    log::debug!("Creating daemon state");
-    let state = Arc::new(RwLock::new(DaemonState::default()));
-    // Initialise the Kakoune slave
-    log::debug!("Initialising Kakoune slave");
-    let kakslave = Arc::new(KakSlave::new(
-        session.clone(),
-        ideslave.clone(),
-        state.clone(),
-    )?);
+    let (stop_tx, stop_rx) = watch::channel(());
 
-    let (runs_tx, runs_rx) = watch::channel(());
-    
-    // Initialise the command processor
-    log::debug!("Starting command processing");
-    let processor = Arc::new(RwLock::new(CommandProcessor::new(
-        session.clone(),
-        kakslave.clone(),
-        runs_rx.clone(),
-    )?));
-    let processor_ = processor.clone();
+    // - `pipe_tx` is used to transmit commands from the pipe file to the internal channel
+    // - `pipe_rx` is the receiving end used to get those commands
+    let (pipe_tx, pipe_rx) = mpsc::unbounded_channel::<Command>();
+    // - `result_tx` is the transmitting end of [`COQTOP`] responses
+    // - `result_rx` receives responses for further processing
+    let (result_tx, result_rx) = mpsc::unbounded_channel::<ProtocolResult>();
 
+    let main_r_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let main_r_port = main_r_listener.local_addr()?.port();
+    let main_w_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let main_w_port = main_w_listener.local_addr()?.port();
 
-    let process_thread = tokio::task::spawn(async move {
-        log::debug!("Start waiting for commands");
+    let main_r = async { main_r_listener.accept().await };
+    let main_w = async { main_w_listener.accept().await };
+    let coqidetop = async {
+        tokio::process::Command::new(COQTOP)
+            .arg("-main-channel")
+            .arg(format!("127.0.0.1:{}:{}", main_r_port, main_w_port))
+            .arg("-topfile")
+            .arg(&coq_file)
+            .arg("-async-proofs")
+            .arg("on")
+            .stdout(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+    };
 
-        processor.write().await.start(runs_rx).await?;
+    log::debug!(
+        "Connecting {} to ports {}:{}",
+        COQTOP,
+        main_r_port,
+        main_w_port
+    );
 
-        Ok::<_, io::Error>(())
-    });
+    let (main_r, main_w, coqidetop) = tokio::join!(main_r, main_w, coqidetop);
+    let (main_r, main_w, mut coqidetop) = (main_r?.0, main_w?.0, coqidetop?);
+
+    let mut kakoune_command_receiver = CommandReceiver::new(pipe_tx, stop_rx.clone());
+    let mut kakoune_command_processor = CommandProcessor::new(pipe_rx, main_w, stop_rx.clone());
+    let mut coqidetop_response_receiver = ResponseReceiver::new(result_tx, main_r, stop_rx.clone());
+    let mut coqidetop_response_processor =
+        ResponseProcessor::new(result_rx, stop_rx.clone(), &tmp_dir, &kak_session, &coq_file).await?;
 
     let mut signals = Signals::new(vec![libc::SIGINT]).unwrap();
-    let signals_thread = tokio::spawn(async move {
-        signals.next().await;
-        log::debug!("Received signal SIGINT");
+    loop {
+        tokio::select! {
+            Some(libc::SIGINT) = signals.next() => {
+                stop_tx.send(()).unwrap();
+                break Ok(());
+            }
+            res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone()) => break res,
+            res = kakoune_command_processor.process() => break res,
+            res = coqidetop_response_receiver.process() => break res,
+            res = coqidetop_response_processor.process() => break res,
+            else => {}
+        }
+    }?;
 
-        runs_tx.send(()).map_err(|err| {
-            io::Error::new(io::ErrorKind::BrokenPipe, format!("Broken pipe: {:?}", err))
-        })?;
-        process_thread.await??;
+    kakoune_command_receiver.stop().await?;
+    kakoune_command_processor.stop().await?;
 
-        log::debug!("Stopping daemon");
+    log::debug!("Killing {}", COQTOP);
 
-        processor_.write().await.stop().await?;
+    coqidetop.kill().await?;
 
-        Ok::<_, io::Error>(())
-    });
+    log::debug!("Shutting down all sockets");
 
-    log::debug!("Creating buffers in Kakoune");
-    kak(session.clone(), format!(
-                r#"evaluate-commands -buffer '{0}' %{{ edit! -readonly -fifo "{1}" "%opt{{coqide_result_buffer}}" }}
-                evaluate-commands -buffer '{0}' %{{ edit! -readonly -fifo "{2}" "%opt{{coqide_goal_buffer}}" }}
-                evaluate-commands -buffer '{0}' %{{ coqide-send-to-process 'init' }}"#,
-                coq_file, result_file(session.clone()), goal_file(session.clone()),
-            )).await?;
+    coqidetop_response_processor.stop().await?;
+    coqidetop_response_receiver.stop().await?;
 
-    signals_thread.await??;
-
-    log::debug!("Dropping all resources...");
-
-    drop(kakslave);
-    drop(state);
-
-    if let Ok(ideslave) = Arc::try_unwrap(ideslave) {
-        ideslave.into_inner().quit().await?;
-    } else {
-        log::error!("Unable to drop the IDE slave. Some sockets may be left alive");
-    }
-
-    log::info!("All sockets/processes/files successfully dropped. Exiting");
+    drop(signals);
 
     Ok(())
 }

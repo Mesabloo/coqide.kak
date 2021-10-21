@@ -142,6 +142,20 @@ impl ProtocolValue {
                     })?;
                 Ok(StateId(val))
             }
+            "route_id" => {
+                assert_decode_error(!xml.attributes.is_empty(), || InvalidStateId)?;
+                assert_decode_error(xml.attributes.get("val").is_some(), || InvalidStateId)?;
+
+                let val = xml
+                    .attributes
+                    .get("val")
+                    .unwrap()
+                    .parse::<i64>()
+                    .map_err(|err| {
+                        io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", err))
+                    })?;
+                Ok(RouteId(val))
+            }
             "status" => {
                 assert_decode_error(xml.children.len() == 4, || InvalidStatus)?;
 

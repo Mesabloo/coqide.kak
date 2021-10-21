@@ -1,5 +1,3 @@
-use std::{future::Future, io};
-
 use super::parser::XMLNode;
 
 #[derive(Debug, Clone)]
@@ -20,6 +18,8 @@ pub enum ProtocolValue {
     Optional(Option<Box<ProtocolValue>>),
     /// `<state_id val="..."/>` represents a number
     StateId(i64),
+    /// `<route_id val="..."/>`
+    RouteId(i64),
 
     /// `<status>'paths''proofName''allProofs''proofNumber'</status>`
     ///
@@ -38,31 +38,35 @@ pub enum ProtocolValue {
     Unknown(XMLNode),
 }
 
-/// Result returned by `coqidetop` on query
+/// Result returned by `coqidetop` on query.
 #[derive(Debug)]
 pub enum ProtocolResult {
-    /// Everything went well, and `coqidetop` responded with some value
+    /// Everything went well, and `coqidetop` responded with some value.
     Good(ProtocolValue),
-    /// An error occured
+    /// An error occured.
     Fail(Option<i64>, Option<i64>, ProtocolRichPP),
-    /// Feedback from the daemon
+    /// Feedback from the daemon.
     Feedback(String, String, ProtocolValue, XMLNode),
 }
 
-/// The type of pretty-printed text
+/// The type of pretty-printed text.
 #[derive(Debug)]
 pub enum ProtocolRichPP {
     /// TMP
     Raw(String),
 }
 
-/// Commands that `coqidetop` can understand
+/// Commands that `coqidetop` can understand.
 #[derive(Debug, Clone)]
 pub enum ProtocolCall {
-    /// Initialize the process
+    /// Initialize the process.
     Init(ProtocolValue),
-    /// Quit
+    /// Quit.
     Quit,
-    /// Go back to a previous state
+    /// Go back to a previous state.
     EditAt(i64),
+    /// Query some Coq statements in a disposable context.
+    ///
+    /// The value transported must be of the form `Pair(RouteId(_), Pair(String(_), StateId(_)))`.
+    Query(ProtocolValue),
 }

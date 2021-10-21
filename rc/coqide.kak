@@ -17,8 +17,12 @@ set-face global coqide_processed default,black
 ####################################################################################################
 
 declare-option -docstring "
-  The PID of the coqide-kak process used to interact with kakoune.
+  The PID of the `coqide-daemon` process used to interact with kakoune.
 " -hidden str coqide_pid
+
+declare-option -docstring "
+  The PID of the `socat` process used to send commands to the daemon.
+" -hidden str coqide_socat_pid
 
 declare-option -docstring "
   The path to the pipe used to control the `coqide-kak` process.
@@ -183,11 +187,41 @@ define-command -docstring "
 }
 
 define-command -docstring "
+  Send a query directly to the underlying `coqidetop` process, in a disposable context.
+" -params 0 coqide-query %{
+  prompt 'Query: ' %{
+    coqide-send-to-process %sh{ echo "query \"$(sed 's/"/\\"/g' <<< "$kak_text")\"" }
+  }
+}
+
+define-command -docstring "
   `coqide-send-to-process <cmd>`: sends a command to the coqide-kak process.
 " -hidden -params 1 coqide-send-to-process %{
   nop %sh{
-    echo "$1" >> "$kak_opt_coqide_pipe/cmd"
-    kill -USR1 "$kak_opt_coqide_pid"
+    echo "$1" >>"$kak_opt_coqide_pipe/cmd"
+#    kill -USR1 "$kak_opt_coqide_pid"
+  }
+}
+
+define-command -docstring "
+  Creates a named pipe, and starts listening (with `socat`) on a Unix socket.
+" -hidden -params 0 coqide-populate-fd4 %{
+  try %{
+    set-option buffer coqide_socat_pid %sh{
+      # Open a new named pipe to transfer data to `socat`
+      if [ -f "$kak_opt_coqide_pipe/cmd" ]; then
+        rm "$kak_opt_coqide_pipe/cmd" &>/dev/null
+
+        # Close the file descriptor 4 which was linked to the pipe in reading & writing
+        exec 4>&-
+        exec 4<&-
+      fi
+      mkfifo "$kak_opt_coqide_pipe/cmd"
+      exec 4<>"$kak_opt_coqide_pipe/cmd"
+      
+      socat -u PIPE:"$kak_opt_coqide_pipe/cmd" UNIX-CONNECT:"$kak_opt_coqide_pipe/cmd.sock" &>/dev/null </dev/null &
+      echo "$!"
+    }
   }
 }
 
@@ -222,6 +256,13 @@ define-command -docstring "
         echo 'fail "coqide: process %opt{coqide_pid} already dead"'
       fi
       rm -r "$kak_opt_coqide_pipe"
+
+      # Close the file descriptor 4
+      exec 4>&-
+      exec 4<&-
+
+      # Kill our `socat` process
+      kill -KILL "$kak_opt_coqide_socat_pid" &>/dev/null || true
     }
   }
 
@@ -230,6 +271,7 @@ define-command -docstring "
   unset-option buffer coqide_log_buffer
   unset-option buffer coqide_goal_buffer
   unset-option buffer coqide_result_buffer
+  unset-option buffer coqide_socat_pid
   unset-option buffer coqide_pid 
   unset-option buffer coqide_processed_range
 }

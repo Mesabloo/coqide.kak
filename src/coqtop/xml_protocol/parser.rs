@@ -230,8 +230,16 @@ parser! {
             ),
             parse_tag_end(),
         ))
-        .map(|(_, cs, n)| (cs, n))
+        .map(|(_, cs, n)| (cs, unescape(n)))
     }
+}
+
+/// Unescape special character sequences like `&nbsp;` or `&amp;` back to ASCII characters.
+fn unescape(str: String) -> String {
+    str.replace("&nbsp;", " ")
+        .replace("&apos;", "'")
+        .replace("&#40;", "(")
+        .replace("&#41;", ")")
 }
 
 parser! {

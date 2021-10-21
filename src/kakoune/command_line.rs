@@ -1,15 +1,13 @@
-use std::{io, process::Stdio, sync::Arc};
+use std::{io, process::Stdio};
 
 use tokio::{io::AsyncWriteExt, process::Command};
 
-use super::session::SessionWrapper;
-
 /// Launches a new `kak` process connected to the session given using the first argument
 /// and tries to send commands to it.
-pub async fn kak(session: Arc<SessionWrapper>, commands: String) -> io::Result<()> {
+pub async fn kak(session: &String, commands: String) -> io::Result<()> {
     let mut proc = Command::new("kak")
         .arg("-p")
-        .arg(session.id())
+        .arg(session)
         .stdin(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;

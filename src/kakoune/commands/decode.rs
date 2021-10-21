@@ -4,16 +4,19 @@ use bytes::Buf;
 
 use combine::{
     choice, easy, from_str, many, parser,
-    parser::byte::{digit, newline, space},
-    parser::combinator::{any_partial_state, AnyPartialState},
-    parser::range::range,
-    parser::token,
+    parser::{
+        byte::{self, digit, newline, space},
+        combinator::{any_partial_state, AnyPartialState},
+        range::range,
+        repeat::repeat_until,
+        token,
+    },
     skip_many1,
     stream::PartialStream,
     ParseError, RangeStream,
 };
 
-use tokio::fs::File;
+use tokio::{fs::File, io::AsyncRead};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
 
@@ -76,7 +79,10 @@ impl Command {
     ///   If the stream is closed, then this will return [`None`].
     /// - The second [`Option`] defines whether a command was successfully decoded, or if a simple byte as been ignored.
     ///   If a command could not be decoded, this will return [`None`].
-    pub async fn parse_from(input: &mut File) -> io::Result<Option<Option<Self>>> {
+    pub async fn parse_from<R>(input: R) -> io::Result<Option<Option<Self>>>
+    where
+        R: AsyncRead + Unpin,
+    {
         let decoder = CommandDecoder::default();
 
         FramedRead::new(input, decoder).try_next().await
@@ -92,7 +98,7 @@ parser! {
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(choice((parse_init(), parse_previous(), parse_rewind(), ignore_byte())))
+        any_partial_state(choice((parse_init(), parse_previous(), parse_rewind(), parse_query(), ignore_byte())))
     }
 }
 
@@ -137,12 +143,52 @@ parser! {
             from_str::<_, String, _>(many::<Vec<_>, _, _>(digit())),
             skip_many1(space()),
             from_str::<_, String, _>(many::<Vec<_>, _, _>(digit())),
-            newline()
+            newline(),
         )).map(|(_, _, line, _, col, _)| {
             let line = line.parse::<u64>().unwrap();
             let col = col.parse::<u64>().unwrap();
             Some(Command::RewindTo(line, col))
         })
+    }
+}
+
+parser! {
+    type PartialState = AnyPartialState;
+
+    fn parse_query['a, Input]()(Input) -> Option<Command>
+    where [
+        Input: RangeStream<Token = u8, Range = &'a [u8]>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+    ]
+    {
+        any_partial_state((
+            range(&b"query"[..]).map(|_| ()),
+            skip_many1(space()),
+            parse_string(),
+            newline(),
+        )).map(|(_, _, str, _)| Some(Command::Query(str)))
+    }
+}
+
+parser! {
+    type PartialState = AnyPartialState;
+
+    fn parse_string['a, Input]()(Input) -> String
+    where [
+        Input: RangeStream<Token = u8, Range = &'a [u8]>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+    ]
+    {
+        let escaped = || range(&b"\\\""[..]).map(|_| b'"');
+
+        any_partial_state((
+            byte::byte(b'"'),
+            from_str(repeat_until::<Vec<_>, _, _, _>(
+                choice((escaped(), token::any())),
+                byte::byte(b'"'),
+            )),
+            byte::byte(b'"'),
+        )).map(|(_, str, _)| str)
     }
 }
 

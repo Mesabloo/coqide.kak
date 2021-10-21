@@ -10,8 +10,6 @@ use log4rs::{
     Config, Handle,
 };
 
-use crate::kakoune::session::SessionWrapper;
-
 /// Creates a new logger and sets it to be the main one.
 ///
 /// This logger dumps all messages whose level are greater than `WARN` to both
@@ -56,6 +54,6 @@ pub fn init<P: AsRef<Path>>(path: P) -> io::Result<Handle> {
 }
 
 /// Retrieves the file where all logging is done.
-pub fn log_file(session: Arc<SessionWrapper>) -> String {
-    format!("{}/log", session.tmp_dir())
+pub fn log_file(tmp_dir: &String) -> String {
+    format!("{}/log", tmp_dir)
 }

@@ -17,6 +17,18 @@ set-face global coqide_processed default,black
 ####################################################################################################
 
 declare-option -docstring "
+  The path to this file when sourced.
+" -hidden str coqide_source %sh{
+  dirname "$kak_source"
+}
+
+# Include our coq code highlighter
+source "%opt{coqide_source}/coq-highlight.kak"
+# Include plugin internals
+# source "%opt{coqide_source}/internals.kak"
+
+
+declare-option -docstring "
   The PID of the `coqide-daemon` process used to interact with kakoune.
 " -hidden str coqide_pid
 
@@ -90,7 +102,7 @@ define-command -docstring "
   }
   
   set-option buffer coqide_pid %sh{
-    "$kak_opt_coqide_command" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe" </dev/null &>/dev/null &
+    "$kak_opt_coqide_command" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe" </dev/null &>"$kak_opt_coqide_pipe/log" &
     echo "$!"
   }
 
@@ -153,23 +165,102 @@ define-command -docstring "
 define-command -docstring "
   Move to the end of the next Coq statement if cursor does not point to a `.`, else send until cursor.
 " -params 0 coqide-move-to %{
-  evaluate-commands -draft -save-regs '/' %sh{
-    echo '
-      try %{
-        execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>"
-      }'
+  try %{
+    declare-option -hidden str coqide_move_line0
+    declare-option -hidden str coqide_move_col0
+    declare-option -hidden str coqide_move_line1
+    declare-option -hidden str coqide_move_col1
+    declare-option -hidden str coqide_move_tmp_file
+    declare-option -hidden bool coqide_move_invalidated true
+  }
+  set-option buffer coqide_move_tmp_file "%opt{coqide_pipe}/tmp"
+  
+  evaluate-commands -draft %{
+    try %{
+      execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>"
+    }
     # jump to the first character of the selection:
     # (ensure forward direction (cursor at end); flip direction (cursor at beginning); reduce selection to cursor)
-    echo 'execute-keys "<a-:><a-;>;<ret>"'
+    execute-keys "<a-:><a-;>;<ret>"
 
-    if [ "$kak_selection" != "." ]; then
-      # if our first cursor is not on a `.`, then go to the next one
-      echo 'set-register slash "\."'
-      echo 'execute-keys "N<space>"'
-    fi
+    evaluate-commands %sh{
+      if ! [ -f "$kak_opt_coqide_move_tmp_file" ]; then
+        touch "$kak_opt_coqide_move_tmp_file"
+      fi
+      
+      IFS=" .,|" read -r _ _ _ line0 col0 _ <<< "$kak_opt_coqide_processed_range"
+      line0=${line0:-0}
+      col0=${col0:-0}
 
-    IFS=".," read -r line col _ _ <<< "$selection_desc"
-    echo "coqide-send-to-process %{goto '$line' '$col'}"
+      echo "set-option buffer coqide_move_line0 '$line0'"
+      echo "set-option buffer coqide_move_col0 '$col0'"
+
+      first_selection=$(sort -g <<< "${kak_selections_desc// /$'\n'}" | uniq | head -1)
+      IFS=".,|" read -r _ _ line1 col1 _ <<< "$first_selection"
+
+      echo "set-option buffer coqide_move_line1 '$line1'"
+      echo "set-option buffer coqide_move_col1 '$col1'"
+    }
+    evaluate-commands %sh{
+      if [ $kak_opt_coqide_move_line1 -lt $kak_opt_coqide_move_line0 \
+         -o $kak_opt_coqide_move_line1 -eq $kak_opt_coqide_move_line0 -a $kak_opt_coqide_move_col1 -lt $kak_opt_coqide_move_col0 ]; then
+        # NOTE: `-a` has a bigger precedence than `-o`, so the test above is really
+        #       `$sline < $eline || ($sline == $eline && $scol < $ecol)`
+        #
+        # This test checks whether the first cursor is before the end of the processed range.
+
+        echo "coqide-invalidate-state $kak_opt_coqide_move_line1 $kak_opt_coqide_move_col1"
+      else
+        # Go to the last processed line and select everything in the buffer
+        # until the end
+        echo "execute-keys '${kak_opt_coqide_move_line0}gghGe<a-|>cat<space><gt>$kak_opt_coqide_move_tmp_file<ret>'"
+        echo "set-option buffer coqide_move_invalidated false"
+      fi
+    }
+    evaluate-commands %sh{
+      if [ "$kak_opt_coqide_move_invalidated" == "true" ]; then
+        exit
+      fi
+  
+      all_ranges=$(python3 "$kak_opt_coqide_source"/../parse_coq.py \
+        "$kak_opt_coqide_move_line0" "$kak_opt_coqide_move_col0" "to" "$kak_opt_coqide_move_line1" "$kak_opt_coqide_move_col1" <"$kak_opt_coqide_move_tmp_file")
+      printf '' >"$kak_opt_coqide_move_tmp_file"
+
+      for span in $(printf "%s\n" $all_ranges); do      
+        IFS=".," read -r bline bcol eline ecol _ <<< "$span"
+
+        position="$(printf "%d.%d,%d.%d," "$bline" "$bcol" "$eline" "$ecol")"
+        
+        # Get all the code between $bline:$bcol and $eline:$col
+        keys="${bline}ggh"
+        if [ ${bcol:-1} -ne 1 ]; then
+          keys="$keys$((bcol - 1))l"
+        fi
+        if [ ${bline:-0} -eq ${eline:-0} ]; then
+          keys="$keys$((ecol - bcol))L"
+        else
+          keys="$keys$((eline - bline))JGh$((ecol - 1))L"
+        fi
+        echo "execute-keys %§$keys<a-|>printf<space>\"<percent>s\"<space>\"$position\\\"\$(sed<space>'s/\"/\\\\\"/g')\\\"<space>\"<space><gt><gt>$kak_opt_coqide_move_tmp_file<ret>§"
+      done
+    }
+    evaluate-commands %sh{
+      if [ "$kak_opt_coqide_move_invalidated" == "true" ]; then
+        exit
+      fi      
+
+      all_ranges="$(cat "$kak_opt_coqide_move_tmp_file")"
+      echo "coqide-send-to-process %§move-to $(sed 's/[[:space:]]*$//' <<< "$all_ranges")§"
+
+      rm "$kak_opt_coqide_move_tmp_file"
+    }
+
+    unset-option buffer coqide_move_col0
+    unset-option buffer coqide_move_col1
+    unset-option buffer coqide_move_invalidated
+    unset-option buffer coqide_move_line0
+    unset-option buffer coqide_move_line1
+    unset-option buffer coqide_move_tmp_file
   }
 }
 
@@ -183,7 +274,57 @@ define-command -docstring "
 define-command -docstring "
   Send the next Coq statement.
 " -params 0 coqide-next %{
-  # TODO: get the next statement, and send it to add to the daemon
+  try %{
+    declare-option -hidden str coqide_next_line0
+    declare-option -hidden str coqide_next_col0
+    declare-option -hidden str coqide_next_span
+    declare-option -hidden str coqide_next_tmp_file 
+  }
+  set-option buffer coqide_next_tmp_file "%opt{coqide_pipe}/tmp"
+
+  evaluate-commands -draft %sh{
+    if ! [ -f "$kak_opt_coqide_next_tmp_file" ]; then
+      touch "$kak_opt_coqide_next_tmp_file"
+    fi
+    
+    # <timestamp> <begin_line>.<begin_column>,<end_line>.<end_column>|<face>
+    IFS=".,| " read -r _ _ _ line0 col0 _ <<< "$kak_opt_coqide_processed_range"
+
+    echo "execute-keys '${line0}ggihGe<a-|>cat<space><gt>$kak_opt_coqide_next_tmp_file<ret>'"
+    echo "set-option buffer coqide_next_line0 '$line0'"
+    echo "set-option buffer coqide_next_col0 '$col0'"
+  }
+  evaluate-commands -draft %sh{
+    next_range=$(python3 "$kak_opt_coqide_source"/../parse_coq.py "$kak_opt_coqide_next_line0" "$kak_opt_coqide_next_col0" "next" <"$kak_opt_coqide_next_tmp_file")
+    printf '' >"$kak_opt_coqide_next_tmp_file"
+
+    IFS="., " read -r bline bcol eline ecol _ <<< "$next_range"
+    # Get all the code between $bline:$bcol and $eline:$col
+    keys="${bline}ggh"
+    if [ ${bcol:-1} -ne 1 ]; then
+      keys="$keys$((bcol - 1))l"
+    fi
+    if [ ${bline:-0} -eq ${eline:-0} ]; then
+      keys="$keys$((ecol - bcol))L"
+    else
+      keys="$keys$((eline - bline))JGh$((ecol - 1))L"
+    fi
+    echo "execute-keys %§$keys<a-|>sed<space>'s/\"/\\\\\"/g'<space><gt>$kak_opt_coqide_next_tmp_file<ret>§"
+    echo "set-option buffer coqide_next_span '$next_range'"
+  }
+  evaluate-commands %sh{
+    IFS="., " read -r bline bcol eline ecol _ <<< "$kak_opt_coqide_next_span"      
+        
+    code="$(cat "$kak_opt_coqide_next_tmp_file")"
+    echo "coqide-send-to-process %§next $bline.$bcol,$eline.$ecol,\"$code\"§"
+
+    rm "$kak_opt_coqide_next_tmp_file"
+  }
+
+  unset-option buffer coqide_next_line0
+  unset-option buffer coqide_next_col0
+  unset-option buffer coqide_next_span
+  unset-option buffer coqide_next_tmp_file
 }
 
 define-command -docstring "
@@ -197,9 +338,15 @@ define-command -docstring "
 define-command -docstring "
   `coqide-send-to-process <cmd>`: sends a command to the coqide-kak process.
 " -hidden -params 1 coqide-send-to-process %{
+  evaluate-commands %sh{
+    if [ -z "$kak_opt_coqide_pid" ]; then
+      echo "fail 'coqide: not started in current buffer'"
+    fi
+  }
+
   nop %sh{
+    >&2 echo "Sending %§$1§"
     echo "$1" >>"$kak_opt_coqide_pipe/cmd"
-#    kill -USR1 "$kak_opt_coqide_pid"
   }
 }
 
@@ -219,7 +366,7 @@ define-command -docstring "
       mkfifo "$kak_opt_coqide_pipe/cmd"
       exec 4<>"$kak_opt_coqide_pipe/cmd"
       
-      socat -u PIPE:"$kak_opt_coqide_pipe/cmd" UNIX-CONNECT:"$kak_opt_coqide_pipe/cmd.sock" &>/dev/null </dev/null &
+      socat -u PIPE:"$kak_opt_coqide_pipe/cmd" UNIX-CONNECT:"$kak_opt_coqide_pipe/cmd.sock" &>"$kak_opt_coqide_pipe/log" </dev/null &
       echo "$!"
     }
   }
@@ -252,6 +399,8 @@ define-command -docstring "
 
   try %{
     evaluate-commands %sh{
+      echo "coqide-send-to-process 'quit'"
+      
       if ! kill -INT "$kak_opt_coqide_pid" &>/dev/null; then
         echo 'fail "coqide: process %opt{coqide_pid} already dead"'
       fi

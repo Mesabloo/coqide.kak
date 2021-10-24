@@ -53,6 +53,8 @@ impl ProtocolCall {
             ),
             Quit => format!("<call val=\"Quit\">{}</call>", Unit.encode()),
             Query(val) => format!("<call val=\"Query\">{}</call>", val.encode()),
+            Goal => format!("<call val=\"Goal\">{}</call>", Unit.encode()),
+            Hints => format!("<call val=\"Hints\">{}</call>", Unit.encode()),
         }
     }
 }

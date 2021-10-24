@@ -1,3 +1,5 @@
+use crate::state::CodeSpan;
+
 #[derive(Debug)]
 /// A command received from Kakoune.
 pub enum Command {
@@ -11,4 +13,8 @@ pub enum Command {
     RewindTo(u64, u64),
     /// Send a query directly to [`COQTOP`] in a disposable environment.
     Query(String),
+    /// Process all the given statements (which correspond to until where the cursor is)
+    MoveTo(Vec<(CodeSpan, String)>),
+    /// Try to process the next statement
+    Next(CodeSpan, String),
 }

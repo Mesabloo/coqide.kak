@@ -1,241 +1,190 @@
-// use std::{future::Future, io, sync::Arc};
+use std::{
+    future::Future,
+    process,
+    sync::{Arc, RwLock},
+};
 
-// use async_signals::Signals;
-// use tokio::{
-//     fs::File,
-//     io::AsyncWriteExt,
-//     sync::{mpsc, watch},
-//     task::JoinHandle,
-// };
-// use tokio_stream::StreamExt;
+use tokio::{
+    io,
+    sync::{mpsc, watch},
+};
 
-// use crate::{
-//     coqtop::xml_protocol::{
-//         parser::XMLNode,
-//         types::{ProtocolCall, ProtocolResult, ProtocolRichPP, ProtocolValue},
-//     },
-//     kakoune::{
-//         session::SessionWrapper,
-//         slave::{command_file, KakSlave},
-//     },
-//     result::result::result_file,
-// };
+use crate::{
+    coqtop::{
+        slave::{IdeSlave, COQTOP},
+        xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolRichPP, ProtocolValue},
+    },
+    state::{CoqState, ErrorState},
+};
 
-// use super::types::Command;
+use super::types::Command;
 
-// pub struct CommandProcessor {
-//     session: Arc<SessionWrapper>,
-//     kakslave: Arc<KakSlave>,
+pub struct CommandProcessor {
+    pipe_rx: mpsc::UnboundedReceiver<Command>,
+    cmd_tx: mpsc::UnboundedSender<String>,
+    ideslave: IdeSlave,
+    coq_state: Arc<RwLock<CoqState>>,
+}
 
-//     todo_rx: mpsc::UnboundedReceiver<Command>,
-//     todo_tx_handle: JoinHandle<io::Result<()>>,
-// }
+impl CommandProcessor {
+    pub fn new(
+        pipe_rx: mpsc::UnboundedReceiver<Command>,
+        cmd_tx: mpsc::UnboundedSender<String>,
+        ideslave: IdeSlave,
+        coq_state: Arc<RwLock<CoqState>>,
+    ) -> Self {
+        Self {
+            pipe_rx,
+            cmd_tx,
+            ideslave,
+            coq_state,
+        }
+    }
 
-// async fn receive_from_pipe(
-//     session: Arc<SessionWrapper>,
-//     todo_tx: mpsc::UnboundedSender<Command>,
-//     mut must_run_rx: watch::Receiver<()>,
-// ) -> io::Result<()> {
-//     let mut signals = Signals::new(vec![libc::SIGUSR1]).unwrap();
-//     let mut pipe = File::from(unix_named_pipe::open_read(command_file(session.clone()))?);
-//     log::debug!("Command pipe opened");
+    pub async fn process(&mut self, mut stop_rx: watch::Receiver<()>) -> io::Result<()> {
+        loop {
+            tokio::select! {
+                Ok(_) = stop_rx.changed() => break Ok(()),
+                Some(cmd) = self.pipe_rx.recv() => {
+                    // Reset the error state when receiving a new command
+                    tokio::task::block_in_place(|| self.ok())?;
 
-//     loop {
-//         tokio::select! {
-//             Ok(_) = must_run_rx.changed() => break Ok(()),
-//             Some(_) = signals.next() => {
-//                 log::debug!("Received a SIGUSR1. Trying to process the next command");
+                    self.process_command(cmd).await?;
+                }
+            }
+        }
+    }
 
-//                 match receive_commands(todo_tx.clone(), &mut pipe).await? {
-//                     None => break Ok(()),
-//                     Some(_) => {}
-//                 }
-//             }
-//         }
-//     }
-// }
+    pub async fn shutdown(self) -> io::Result<()> {
+        self.ideslave.quit().await?;
 
-// async fn receive_commands(
-//     todo_tx: mpsc::UnboundedSender<Command>,
-//     pipe: &mut File,
-// ) -> io::Result<Option<()>> {
-//     loop {
-//         match Command::parse_from(pipe).await? {
-//             None => break Ok(None),
-//             Some(None) => {}
-//             Some(Some(cmd)) => {
-//                 log::debug!("Command '{:?}' sent through internal channel", cmd);
+        Ok(())
+    }
 
-//                 todo_tx.send(cmd).map_err(|err| {
-//                     io::Error::new(
-//                         io::ErrorKind::NotConnected,
-//                         format!("Could not send command to channel: {:?}", err),
-//                     )
-//                 })?;
+    /////////////
 
-//                 break Ok(Some(()));
-//             }
-//         }
-//     }
-// }
+    #[inline]
+    async fn recv_1(&mut self) -> io::Result<ProtocolResult> {
+        self.ideslave.recv().await
+    }
 
-// impl CommandProcessor {
-//     pub fn new(
-//         session: Arc<SessionWrapper>,
-//         kakslave: Arc<KakSlave>,
-//         must_run_rx: watch::Receiver<()>,
-//     ) -> io::Result<Self> {
-//         let (todo_tx, todo_rx) = mpsc::unbounded_channel();
-//         let todo_tx_handle = tokio::spawn(receive_from_pipe(session.clone(), todo_tx, must_run_rx));
+    #[inline]
+    async fn recv_2(&mut self) -> io::Result<(ProtocolResult, ProtocolResult)> {
+        Ok((self.ideslave.recv().await?, self.ideslave.recv().await?))
+    }
 
-//         Ok(Self {
-//             session: session.clone(),
-//             kakslave,
-//             todo_rx,
-//             todo_tx_handle,
-//         })
-//     }
+    fn error(
+        &mut self,
+        line: Option<i64>,
+        col: Option<i64>,
+        msg: ProtocolRichPP,
+    ) -> io::Result<()> {
+        {
+            let mut coq_state = self
+                .coq_state
+                .write()
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{}", err)))?;
+            coq_state.error();
+        }
 
-//     pub async fn start(&mut self, mut must_run_rx: watch::Receiver<()>) -> io::Result<()> {
-//         loop {
-//             tokio::select! {
-//                 Ok(_) = must_run_rx.changed() => return Ok(()),
-//                 cmd = self.todo_rx.recv() => {
-//                     match cmd {
-//                         None => {
-//                             log::warn!("Channel closed: no more commands can be received");
-//                             return Ok(());
-//                         }
-//                         Some(cmd) => {
-//                             log::debug!("Received command `{:?}` from internal channel", cmd);
+        Ok(())
+    }
 
-//                             self.try_process_command(cmd).await?;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
+    fn ok(&mut self) -> io::Result<()> {
+        {
+            let mut coq_state = self
+                .coq_state
+                .write()
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{}", err)))?;
+            coq_state.ok();
+        }
 
-//     pub async fn stop(&mut self) -> io::Result<()> {
-//         self.todo_rx.close();
+        Ok(())
+    }
 
-//         Ok(())
-//     }
+    fn error_state(&self) -> io::Result<ErrorState> {
+        {
+            let mut coq_state = self
+                .coq_state
+                .read()
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{}", err)))?;
+            Ok(coq_state.get_error_state())
+        }
+    }
 
-//     async fn try_process_command(&mut self, cmd: Command) -> io::Result<()> {
-//         log::debug!("Processing command `{:?}`", cmd);
+    fn unexpected_response(&mut self, resp: ProtocolResult) {
+        log::error!("Unexpected response '{:?}' from {}", resp, COQTOP);
+    }
 
-//         let response = self
-//             .kakslave
-//             .ideslave
-//             .write()
-//             .await
-//             .send(self.command_to_call(&cmd))
-//             .await?;
+    #[inline]
+    async fn when_good<'a, 'b: 'a, F, G>(&'b mut self, g: G) -> F::Output
+    where
+        F: Future<Output = io::Result<()>>,
+        G: Fn(&'a mut Self, ProtocolValue) -> F,
+    {
+        loop {
+            let resp = self.recv_1().await?;
+            log::debug!("Received response '{:?}' from {}", resp, COQTOP);
 
-//         match cmd {
-//             Command::Init => self.when_good(response, Self::handle_init).await?,
-//             Command::Query(str) => self.when_feedback(response, Self::handle_query).await?,
-//             _ => todo!(),
-//         }
-//         Ok(())
-//     }
+            match resp {
+                ProtocolResult::Fail(line, col, msg) => {
+                    break tokio::task::block_in_place(|| self.error(line, col, msg));
+                }
+                ProtocolResult::Good(val) => break g(self, val).await,
+                ProtocolResult::Feedback(_, _, _, _) => self.unexpected_response(resp),
+            }
+        }
+    }
 
-//     fn command_to_call(&self, cmd: &Command) -> ProtocolCall {
-//         match cmd {
-//             Command::Init => ProtocolCall::Init(ProtocolValue::Optional(None)),
-//             _ => todo!(),
-//         }
-//     }
+    ///////////////////////////////////////
 
-//     async fn when_good<'a, 'b: 'a, F, T>(&'b mut self, resp: ProtocolResult, f: F) -> io::Result<()>
-//     where
-//         F: Fn(&'a mut Self, ProtocolValue) -> T,
-//         T: Future<Output = io::Result<()>>,
-//     {
-//         match resp {
-//             ProtocolResult::Fail(line, col, msg) => self.fail(line, col, msg).await,
-//             ProtocolResult::Feedback(_, _, _, _) => self.unexpected_response(resp).await,
-//             ProtocolResult::Good(val) => f(self, val).await,
-//         }
-//     }
+    async fn process_command(&mut self, cmd: Command) -> io::Result<()> {
+        // If we already errored out (which should not happen), do not process this command
+        let error_state = tokio::task::block_in_place(|| self.error_state())?;
+        if let ErrorState::Error = error_state {
+            return Ok(());
+        }
 
-//     async fn when_feedback<'a, 'b: 'a, F, T>(
-//         &'b mut self,
-//         resp: ProtocolResult,
-//         f: F,
-//     ) -> io::Result<()>
-//     where
-//         F: Fn(&'a mut Self, String, String, ProtocolValue, XMLNode) -> T,
-//         T: Future<Output = io::Result<()>>,
-//     {
-//         match resp {
-//             ProtocolResult::Fail(line, col, msg) => self.fail(line, col, msg).await,
-//             ProtocolResult::Good(_) => self.unexpected_response(resp).await,
-//             ProtocolResult::Feedback(object, route, state_id, content) => {
-//                 f(self, object, route, state_id, content).await
-//             }
-//         }
-//     }
+        match cmd {
+            Command::Init => self.process_init().await,
+            Command::Quit => self.process_quit().await,
+            Command::Query(str) => self.process_query(str).await,
+            Command::Previous => todo!(),
+            Command::RewindTo(_, _) => todo!(),
+            Command::MoveTo(_) => todo!(),
+            Command::Next(_, _) => todo!(),
+        }
+    }
 
-//     async fn fail(
-//         &mut self,
-//         line: Option<i64>,
-//         col: Option<i64>,
-//         msg: ProtocolRichPP,
-//     ) -> io::Result<()> {
-//         self.kakslave.ext_state.write().await.try_fail();
+    async fn process_init(&mut self) -> io::Result<()> {
+        self.ideslave
+            .send(ProtocolCall::Init(ProtocolValue::Optional(None)))
+            .await?;
 
-//         match msg {
-//             ProtocolRichPP::Raw(str) => {
-//                 File::open(result_file(self.session.clone()))
-//                     .await?
-//                     .write_all(str.as_bytes())
-//                     .await?
-//             }
-//         }
-//         // TODO: mark `line` and `col` in kakoune
+        self.when_good(Self::handle_init).await
+    }
 
-//         Ok(())
-//     }
+    async fn process_quit(&mut self) -> io::Result<()> {
+        self.ideslave.send(ProtocolCall::Quit).await?;
 
-//     async fn unexpected_response(&mut self, resp: ProtocolResult) -> io::Result<()> {
-//         log::warn!("Unexpected response '{:?}'. Ignoring", resp);
+        self.handle_quit().await
+    }
 
-//         Ok(())
-//     }
+    async fn process_query(&mut self, query: String) -> io::Result<()> {
+        Ok(())
+    }
 
-//     async fn handle_init(&mut self, val: ProtocolValue) -> io::Result<()> {
-//         match val {
-//             ProtocolValue::StateId(state_id) => {
-//                 {
-//                     let mut state = self.kakslave.ext_state.write().await;
-//                     state.set_root_id(state_id);
-//                     state.set_current_id(state_id);
-//                 }
-//                 Ok(())
-//             }
-//             val => {
-//                 log::error!("Init: Unexpected good value '{:?}'. Ignoring command", val);
-//                 Ok(())
-//             }
-//         }
-//     }
+    /////////////////////////////////////////////
 
-//     async fn handle_query(
-//         &mut self,
-//         object: String,
-//         route: String,
-//         state_id: ProtocolValue,
-//         content: XMLNode,
-//     ) -> io::Result<()> {
-//         if let ProtocolValue::StateId(state_id) = state_id {
+    async fn handle_init(&mut self, val: ProtocolValue) -> io::Result<()> {
+        Ok(())
+    }
 
-//         } else {
-//             log::error!("Incoherent daemon state... Could not receive a `state_id` value from a `Query` response");
-//         }
-      
-//         Ok(())
-//     }
-// }
+    async fn handle_quit(&mut self) -> io::Result<()> {
+        // When we receive `quit`, send a SIGINT to ourselves to gracefully exit
+        unsafe {
+            libc::kill(process::id() as i32, libc::SIGINT);
+        }
+        Ok(())
+    }
+}

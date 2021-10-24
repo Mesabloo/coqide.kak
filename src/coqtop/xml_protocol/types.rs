@@ -69,4 +69,8 @@ pub enum ProtocolCall {
     ///
     /// The value transported must be of the form `Pair(RouteId(_), Pair(String(_), StateId(_)))`.
     Query(ProtocolValue),
+    /// Fetch some hints.
+    Hints,
+    /// Get all current goals.
+    Goal,
 }

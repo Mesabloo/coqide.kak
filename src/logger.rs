@@ -20,13 +20,13 @@ use log4rs::{
 pub fn init<P: AsRef<Path>>(path: P) -> io::Result<Handle> {
     let on_console = ConsoleAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
-            "{h([{d(%Y-%m-%d %H:%M:%S)} {M} {l}])} {m}{n}",
+            "{h([{d(%Y-%m-%d %H:%M:%S)} [{P}] {M} {l}])} {m}{n}",
         )))
         .target(Target::Stderr)
         .build();
     let in_log_file = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
-            "[{d(%Y-%m-%d %H:%M:%S)} {M} {l}] {m}{n}",
+            "[{d(%Y-%m-%d %H:%M:%S)} [{P}] {M} {l}] {m}{n}",
         )))
         .build(path)?;
 

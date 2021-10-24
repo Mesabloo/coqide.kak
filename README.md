@@ -8,6 +8,11 @@ I wanted to maintain a fork on my own, but most of the extension is written in s
 
 I chose to write the “backend” in Rust, mainly to discover, and because I felt like it was more suited for this than Haskell.
 
+## Dependencies
+
+- [socat](https://linux.die.net/man/1/socat)
+- Python 3.8+
+
 ## Installation
 
 The recommended way to install this plugin is through [plug.kak](https://github.com/andreyorst/plug.kak):
@@ -19,6 +24,8 @@ plug "mesabloo/coqide.kak" do %{
   # configure this plugin here
 }
 ```
+
+------------------------------
 
 My personal configuration is:
 ```sh
@@ -39,6 +46,8 @@ hook global WinSetOption filetype=coq %{
     -docstring "move tip to main cursor"
   map buffer coq l ": coqide-dump-log<ret>" \
     -docstring "dump logs"
+  map buffer coq q ": coqide-query<ret>" \
+    -docstring "send a query to coqtop"
 
   # Better looking face
   set-face global coqide_processed default,default+id

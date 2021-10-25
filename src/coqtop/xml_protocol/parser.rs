@@ -238,6 +238,7 @@ parser! {
 fn unescape(str: String) -> String {
     str.replace("&nbsp;", " ")
         .replace("&apos;", "'")
+        .replace("&quot;", "\"")
         .replace("&#40;", "(")
         .replace("&#41;", ")")
         .replace("&gt;", ">")

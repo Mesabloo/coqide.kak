@@ -184,6 +184,7 @@ impl IdeSlave {
                     })?;
 
                     coq_state.backtrack_last_processed();
+                    coq_state.error();
                     Ok(())
                 })?;
 

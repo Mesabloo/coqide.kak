@@ -286,6 +286,7 @@ parser! {
             alpha_num(),
             byte(b'_'),
             byte(b'-'),
+            byte(b'.'),
         )))))
     }
 }

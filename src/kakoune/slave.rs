@@ -14,33 +14,26 @@ pub struct KakSlave {
     kak_session: String,
     kak_goal: String,
     kak_result: String,
-    goal_file: File,
-    result_file: File,
     coq_file: String,
 }
 
 impl KakSlave {
-    pub async fn new(
+    pub fn new(
         cmd_rx: mpsc::UnboundedReceiver<String>,
         kak_session: String,
         coq_file: String,
         tmp_dir: &String,
-    ) -> io::Result<Self> {
+    ) -> Self {
         let kak_goal = goal_file(&tmp_dir);
         let kak_result = result_file(&tmp_dir);
 
-        let goal_file = File::create(&kak_goal).await?;
-        let result_file = File::create(&kak_result).await?;
-
-        Ok(Self {
+        Self {
             cmd_rx,
             kak_session,
             kak_goal,
             kak_result,
-            goal_file,
-            result_file,
             coq_file,
-        })
+        }
     }
 
     pub async fn process(&mut self, mut stop_rx: watch::Receiver<()>) -> io::Result<()> {
@@ -48,7 +41,9 @@ impl KakSlave {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok(()),
                 Some(cmd) = self.cmd_rx.recv() => {
-                    kak(&self.kak_session, cmd).await?;
+                    log::debug!("Sending command `{}` to Kakoune", cmd);
+
+                    kak(&self.kak_session, format!(r#"evaluate-commands -buffer '{}' %{{ {} }}"#, self.coq_file, cmd)).await?;
 
                     self.update_buffers().await?;
                 }
@@ -71,13 +66,10 @@ impl KakSlave {
                     %|cat<space>{}<ret>
                   }}
                 }}"#,
-                self.coq_file,
-                self.kak_goal,
+                self.coq_file, self.kak_goal,
             ),
         )
-        .await?;
-
-        Ok(())
+        .await
     }
 
     async fn update_result_buffer(&self) -> io::Result<()> {
@@ -89,13 +81,9 @@ impl KakSlave {
                     %|cat<space>{}<ret>
                   }}
                 }}"#,
-                self.coq_file,
-                self.kak_result,
+                self.coq_file, self.kak_result,
             ),
         )
-        .await?;
-
-      
-        Ok(())
+        .await
     }
 }

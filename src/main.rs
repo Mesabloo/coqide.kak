@@ -1,30 +1,25 @@
 #![feature(box_patterns)]
 #![feature(async_closure)]
+#![feature(io_error_more)]
 
-use std::{
-    env,
-    path::Path,
-    process::{exit, Stdio},
-    sync::{Arc, RwLock},
-};
+use std::{env, path::Path, process::exit, sync::{Arc, RwLock}};
 
 use async_signals::Signals;
 use tokio::{
     fs::File,
     io,
-    net::TcpListener,
     sync::{mpsc, watch},
 };
 use tokio_stream::StreamExt;
 
-use crate::{coqtop::slave::IdeSlave, kakoune::commands::types::Command};
-use crate::{coqtop::xml_protocol::types::ProtocolResult, state::CoqState};
 use crate::{
-    files::{goal_file, result_file, COQTOP},
+    coqtop::{slave::IdeSlave, xml_protocol::types::ProtocolCall},
+    files::{goal_file, result_file},
     kakoune::{
-        commands::{processor::CommandProcessor, receiver::CommandReceiver},
+        commands::{processor::CommandProcessor, receiver::CommandReceiver, types::Command},
         slave::KakSlave,
     },
+    state::CoqState,
 };
 
 mod coqtop;
@@ -71,17 +66,23 @@ async fn main() -> io::Result<()> {
     // - `pipe_rx` is the receiving end used to get those commands
     let (pipe_tx, pipe_rx) = mpsc::unbounded_channel::<Command>();
     //
+    let (call_tx, call_rx) = mpsc::unbounded_channel::<ProtocolCall>();
+    //
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<String>();
-
-    let ideslave = IdeSlave::new(&tmp_dir, coq_file.clone()).await?;
-    let mut kakslave =
-        KakSlave::new(cmd_rx, kak_session.clone(), coq_file.clone(), &tmp_dir).await?;
 
     let coq_state = Arc::new(RwLock::new(CoqState::new()));
 
+    let mut ideslave = IdeSlave::new(call_rx, cmd_tx.clone(), &tmp_dir, coq_file.clone()).await?;
     let mut kakoune_command_receiver = CommandReceiver::new(pipe_tx, stop_rx.clone());
-    let mut kakoune_command_processor = CommandProcessor::new(pipe_rx, cmd_tx, ideslave, coq_state.clone());
-    //let mut coqidetop_response_receiver = ResponseReceiver::new(result_tx, main_r, stop_rx.clone());
+    let mut kakoune_command_processor = CommandProcessor::new(
+        pipe_rx,
+        call_tx,
+        coq_state.clone(),
+        goal_file(&tmp_dir),
+        result_file(&tmp_dir),
+    )
+    .await?;
+    let mut kakslave = KakSlave::new(cmd_rx, kak_session.clone(), coq_file.clone(), &tmp_dir);
 
     let mut signals = Signals::new(vec![libc::SIGINT]).unwrap();
     loop {
@@ -92,13 +93,14 @@ async fn main() -> io::Result<()> {
             }
             res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone()) => break res,
             res = kakoune_command_processor.process(stop_rx.clone()) => break res,
+            res = ideslave.process(coq_state.clone(), stop_rx.clone()) => break res,
             res = kakslave.process(stop_rx.clone()) => break res,
             else => {}
         }
     }?;
 
     kakoune_command_receiver.stop().await?;
-    kakoune_command_processor.shutdown().await?;
+    ideslave.quit().await?;
 
     drop(signals);
 

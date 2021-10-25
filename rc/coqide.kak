@@ -166,10 +166,10 @@ define-command -docstring "
   Move to the end of the next Coq statement if cursor does not point to a `.`, else send until cursor.
 " -params 0 coqide-move-to %{
   try %{
-    declare-option -hidden str coqide_move_line0
-    declare-option -hidden str coqide_move_col0
-    declare-option -hidden str coqide_move_line1
-    declare-option -hidden str coqide_move_col1
+    declare-option -hidden int coqide_move_line0
+    declare-option -hidden int coqide_move_col0
+    declare-option -hidden int coqide_move_line1
+    declare-option -hidden int coqide_move_col1
     declare-option -hidden str coqide_move_tmp_file
     declare-option -hidden bool coqide_move_invalidated true
   }
@@ -200,6 +200,10 @@ define-command -docstring "
 
       echo "set-option buffer coqide_move_line1 '$line1'"
       echo "set-option buffer coqide_move_col1 '$col1'"
+
+      if [ $line0 -ne 1 -a $col0 -ne 1 ]; then
+        echo "set-option -add buffer coqide_move_col0 1"
+      fi
     }
     evaluate-commands %sh{
       if [ $kak_opt_coqide_move_line1 -lt $kak_opt_coqide_move_line0 \
@@ -211,9 +215,14 @@ define-command -docstring "
 
         echo "coqide-invalidate-state $kak_opt_coqide_move_line1 $kak_opt_coqide_move_col1"
       else
-        # Go to the last processed line and select everything in the buffer
+        # Go to the last processed line and column and select everything in the buffer
         # until the end
-        echo "execute-keys '${kak_opt_coqide_move_line0}gghGe<a-|>cat<space><gt>$kak_opt_coqide_move_tmp_file<ret>'"
+        keys="${kak_opt_coqide_move_line0}ggh"
+        if [ $kak_opt_coqide_move_line0 -ne 1 -a $kak_opt_coqide_move_col0 -ne 1 ]; then
+          keys="${keys}${kak_opt_coqide_move_col0}l"
+        fi
+        keys="${keys}Ge<a-|>cat<space><gt>$kak_opt_coqide_move_tmp_file<ret>"
+        echo "execute-keys '$keys'"
         echo "set-option buffer coqide_move_invalidated false"
       fi
     }
@@ -275,8 +284,8 @@ define-command -docstring "
   Send the next Coq statement.
 " -params 0 coqide-next %{
   try %{
-    declare-option -hidden str coqide_next_line0
-    declare-option -hidden str coqide_next_col0
+    declare-option -hidden int coqide_next_line0
+    declare-option -hidden int coqide_next_col0
     declare-option -hidden str coqide_next_span
     declare-option -hidden str coqide_next_tmp_file 
   }
@@ -289,10 +298,21 @@ define-command -docstring "
     
     # <timestamp> <begin_line>.<begin_column>,<end_line>.<end_column>|<face>
     IFS=".,| " read -r _ _ _ line0 col0 _ <<< "$kak_opt_coqide_processed_range"
+    line0=${line0:-1}
+    col0=${col0:-1}
 
-    echo "execute-keys '${line0}ggihGe<a-|>cat<space><gt>$kak_opt_coqide_next_tmp_file<ret>'"
+    keys="${line0}ggh"
+    if [ $line0 -ne 1 -a $col0 -ne 1 ]; then
+      keys="${keys}${col0}l"
+    fi
+    keys="${keys}Ge<a-|>cat<space><gt>$kak_opt_coqide_next_tmp_file<ret>"
+    echo "execute-keys '$keys'"
     echo "set-option buffer coqide_next_line0 '$line0'"
     echo "set-option buffer coqide_next_col0 '$col0'"
+
+    if [ $line0 -ne 1 -a $col0 -ne 1 ]; then
+      echo "set-option -add buffer coqide_next_col0 1"
+    fi
   }
   evaluate-commands -draft %sh{
     next_range=$(python3 "$kak_opt_coqide_source"/../parse_coq.py "$kak_opt_coqide_next_line0" "$kak_opt_coqide_next_col0" "next" <"$kak_opt_coqide_next_tmp_file")

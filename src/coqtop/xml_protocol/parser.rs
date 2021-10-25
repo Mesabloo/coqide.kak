@@ -224,13 +224,13 @@ parser! {
             repeat_until::<Vec<_>, _, _, _>(
                 choice((
                     attempt(parse_node().map(Child::Node)),
-                    from_str(take_until_byte(b'<')).map(Child::Raw),
+                    from_str(take_until_byte(b'<')).map(|str| Child::Raw(unescape(str))),
                 )),
                 attempt(parse_tag_end()),
             ),
             parse_tag_end(),
         ))
-        .map(|(_, cs, n)| (cs, unescape(n)))
+        .map(|(_, cs, n)| (cs, n))
     }
 }
 
@@ -240,6 +240,9 @@ fn unescape(str: String) -> String {
         .replace("&apos;", "'")
         .replace("&#40;", "(")
         .replace("&#41;", ")")
+        .replace("&gt;", ">")
+        .replace("&lt;", "<")
+        .replace("&amp;", "&")
 }
 
 parser! {

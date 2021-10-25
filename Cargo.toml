@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 async-signals = "0.3.1"
 libc = "0.2.104"
-#signal-hook = { version = "0.3.10", features = ["iterator"] }
 exitcode = "1.1.2"
 log = "0.4.14"
 log4rs = "1.0.0"

@@ -39,18 +39,31 @@ pub enum ProtocolValue {
 }
 
 /// Result returned by `coqidetop` on query.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProtocolResult {
     /// Everything went well, and `coqidetop` responded with some value.
     Good(ProtocolValue),
     /// An error occured.
     Fail(Option<i64>, Option<i64>, ProtocolRichPP),
     /// Feedback from the daemon.
-    Feedback(String, String, ProtocolValue, XMLNode),
+    Feedback(String, String, ProtocolValue, FeedbackContent),
+}
+
+/// The content of a feedback [`ProtocolResult`].
+#[derive(Debug, Clone)]
+pub enum FeedbackContent {
+    /// A simple RichPP message.
+    Message(ProtocolRichPP),
+    /// Some piece of code has been processed.
+    Processed,
+    /// Worker status
+    WorkerStatus(XMLNode),
+    /// Processing some call
+    Processing(XMLNode),
 }
 
 /// The type of pretty-printed text.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProtocolRichPP {
     /// TMP
     Raw(String),
@@ -67,10 +80,12 @@ pub enum ProtocolCall {
     EditAt(i64),
     /// Query some Coq statements in a disposable context.
     ///
-    /// The value transported must be of the form `Pair(RouteId(_), Pair(String(_), StateId(_)))`.
+    /// The value transported must be of the form `Pair(box RouteId(_), Pair(box Str(_), box StateId(_)))`.
     Query(ProtocolValue),
     /// Fetch some hints.
     Hints,
     /// Get all current goals.
     Goal,
+    /// Send some piece of code to [`COQTOP`]
+    Add(String, i64),
 }

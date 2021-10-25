@@ -36,11 +36,11 @@ impl ProtocolValue {
 }
 
 fn escape(str: String) -> String {
-    str.replace("<", "&lt;")
+    str.replace("&", "&amp;")
+        .replace("<", "&lt;")
         .replace(">", "&gt;")
-        .replace(" ", "&nbsp;")
-        .replace("&", "&amp;")
-        .replace("'", "&apos;")
+    // .replace(" ", "&nbsp;")
+    // .replace("'", "&apos;")
 }
 
 impl ProtocolCall {
@@ -55,6 +55,20 @@ impl ProtocolCall {
             Query(val) => format!("<call val=\"Query\">{}</call>", val.encode()),
             Goal => format!("<call val=\"Goal\">{}</call>", Unit.encode()),
             Hints => format!("<call val=\"Hints\">{}</call>", Unit.encode()),
+            Add(code, state_id) => format!(
+                "<call val=\"Add\">{}</call>",
+                ProtocolValue::Pair(
+                    Box::new(ProtocolValue::Pair(
+                        Box::new(ProtocolValue::Str(code)),
+                        Box::new(ProtocolValue::Int(2))
+                    )),
+                    Box::new(ProtocolValue::Pair(
+                        Box::new(ProtocolValue::StateId(state_id)),
+                        Box::new(ProtocolValue::Boolean(true))
+                    ))
+                )
+                .encode()
+            ),
         }
     }
 }

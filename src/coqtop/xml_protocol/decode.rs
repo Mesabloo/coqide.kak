@@ -1,6 +1,7 @@
 use super::{
     parser::XMLNode,
     types::{
+        FeedbackContent,
         ProtocolResult::{self, *},
         ProtocolRichPP::{self, *},
         ProtocolValue::{self, *},
@@ -22,6 +23,7 @@ pub enum DecodeError {
     InvalidRichPP,
     InvalidStateId,
     InvalidFeedback,
+    InvalidFeedbackContent,
 }
 
 use DecodeError::*;
@@ -41,6 +43,7 @@ impl std::fmt::Debug for DecodeError {
             InvalidRichPP => write!(f, "Invalid <richpp/> tag"),
             InvalidStateId => write!(f, "Invalid <state_id/> tag"),
             InvalidFeedback => write!(f, "Invalid <feedback/> tag"),
+            InvalidFeedbackContent => write!(f, "Invalid <feedback_content/> tag"),
         }
     }
 }
@@ -255,6 +258,7 @@ impl ProtocolResult {
 
                 let state_id = xml.children[0].as_node().cloned().unwrap();
                 let feedback_content = xml.children[1].as_node().cloned().unwrap();
+                let feedback_content = FeedbackContent::decode(feedback_content)?;
 
                 ProtocolValue::decode(state_id)
                     .map(|val| ProtocolResult::Feedback(object, route, val, feedback_content))
@@ -271,6 +275,8 @@ impl ProtocolResult {
         R: AsyncRead + Unpin,
     {
         let elem = XMLNode::decode_stream(stream).await?;
+        log::debug!(">>> {:?}", elem);
+
         ProtocolResult::decode(elem)
     }
 }
@@ -301,6 +307,50 @@ impl ProtocolRichPP {
         }
 
         Ok(Raw(raw))
+    }
+}
+
+impl FeedbackContent {
+    pub fn decode(xml: XMLNode) -> io::Result<Self> {
+        assert_decode_error(xml.attributes.get("val").is_some(), || {
+            InvalidFeedbackContent
+        })?;
+
+        match xml.attributes.get("val").unwrap().as_str() {
+            "processed" => Ok(FeedbackContent::Processed),
+            "message" => {
+                assert_decode_error(!xml.children.is_empty(), || InvalidFeedbackContent)?;
+
+                // <message>
+                //    <message_level />
+                //    <option />
+                //    <richpp>
+                //      <_><pp>...</pp></_>
+                //    </richpp>
+                // </message>
+                let message = xml.children[0].as_node().unwrap().clone();
+                assert_decode_error(!message.children.is_empty(), || InvalidFeedbackContent)?;
+                assert_decode_error(message.children.len() >= 3, || InvalidFeedbackContent)?;
+
+                ProtocolRichPP::decode(message.children[2].as_node().cloned().unwrap())
+                    .map(FeedbackContent::Message)
+            }
+            "workerstatus" => {
+                assert_decode_error(!xml.children.is_empty(), || InvalidFeedbackContent)?;
+
+                Ok(FeedbackContent::WorkerStatus(
+                    xml.children[0].as_node().cloned().unwrap(),
+                ))
+            }
+            "processingin" => {
+                assert_decode_error(!xml.children.is_empty(), || InvalidFeedbackContent)?;
+
+                Ok(FeedbackContent::Processing(
+                    xml.children[0].as_node().cloned().unwrap(),
+                )) 
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

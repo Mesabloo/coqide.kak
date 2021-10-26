@@ -114,9 +114,8 @@ define-command -docstring "
     # Ideally, there is a way to add a hook on buffer modifications, but there seems
     # to be none at the moment, which is unfortunate
     echo "
-      hook -once -group coqide buffer=$kak_opt_coqide_buffer BufClose .* %{
-        coqide-stop
-      }
+      hook -once -group coqide buffer=$kak_opt_coqide_buffer BufClose .* %{ coqide-stop }
+      hook -once -group coqide buffer=$kak_opt_coqide_buffer ClientClose .* %{ coqide-stop }
 
       hook -group coqide buffer=$kak_opt_coqide_buffer InsertChar .* coqide-on-text-change
       hook -group coqide buffer=$kak_opt_coqide_buffer InsertDelete .* coqide-on-text-change

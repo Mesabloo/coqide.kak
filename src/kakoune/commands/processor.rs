@@ -93,10 +93,7 @@ impl CommandProcessor {
         match cmd {
             Command::Init => self.process_init().await?,
             Command::Quit => self.process_quit().await?,
-            Command::Previous => {
-                log::error!("Unhandled command `{:?}`", cmd);
-                todo!()
-            }
+            Command::Previous => self.process_previous().await?,
             Command::RewindTo(line, col) => self.process_rewind_to(line, col).await?,
             Command::Query(str) => self.process_query(str).await?,
             Command::MoveTo(_) => {
@@ -178,5 +175,20 @@ impl CommandProcessor {
             Box::new(Pair(Box::new(Str(query)), Box::new(StateId(state_id)))),
         )))
         .await
+    }
+
+    /// Process a [`Command::Previous`] by backtracking the current state one state earlier.
+    async fn process_previous(&mut self) -> io::Result<()> {
+        let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
+            let mut coq_state = self
+                .coq_state
+                .write()
+                .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
+
+            coq_state.backtrack_one_state();
+            Ok(coq_state.get_current_state_id())
+        })?;
+
+        self.send(ProtocolCall::EditAt(state_id)).await
     }
 }

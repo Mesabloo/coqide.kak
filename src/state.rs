@@ -135,13 +135,14 @@ impl CoqState {
     /// Creates a new daemon state with the following attributes:
     /// - `error state = Ok`
     /// - no mappings
-    /// - `root ID = current ID = 0`
+    /// - `root ID = 1`
+    /// - `current ID = 0`
     /// - no statements processed
     pub fn new() -> Self {
         Self {
             error_state: ErrorState::Ok,
             state_id_to_range: BiMap::new(),
-            root_id: 0,
+            root_id: 1,
             current_id: 0,
             last_processed: false,
         }
@@ -184,9 +185,12 @@ impl CoqState {
         }
     }
 
+    /// Gets the range associated with the current state ID, or `1.1,1.1` if none can be found.
     pub fn get_current_range(&self) -> CodeSpan {
+        let max_id = *self.state_id_to_range.left_values().max().unwrap_or(&self.root_id);
+      
         self.state_id_to_range
-            .get_by_left(&self.get_current_state_id())
+            .get_by_left(&max_id)
             .cloned()
             .unwrap_or_else(|| CodeSpan::default())
     }
@@ -195,19 +199,6 @@ impl CoqState {
     pub fn push_range(&mut self, state_id: i64, range: CodeSpan) {
         self.state_id_to_range.insert(state_id, range);
         self.last_processed = true;
-    }
-
-    pub fn backtrack_to_id(&mut self, state_id: i64) {
-        self.state_id_to_range.retain(|id, _| id <= &state_id);
-        self.last_processed = false;
-
-        self.set_current_state_id(
-            *self
-                .state_id_to_range
-                .left_values()
-                .max()
-                .unwrap_or(&self.root_id),
-        );
     }
 
     /// Backtrack to the last state before the indicated position.
@@ -253,5 +244,13 @@ impl CoqState {
 
             self.last_processed = false;
         }
+    }
+
+    /// Go back one state.
+    pub fn backtrack_one_state(&mut self) {
+        let range = self.get_current_range();
+        self.backtrack_before_position(range.begin_line, range.begin_column + 1);
+
+        self.set_current_state_id(self.get_current_state_id() + 1);
     }
 }

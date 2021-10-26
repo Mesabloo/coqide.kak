@@ -96,10 +96,7 @@ impl CommandProcessor {
             Command::Previous => self.process_previous().await?,
             Command::RewindTo(line, col) => self.process_rewind_to(line, col).await?,
             Command::Query(str) => self.process_query(str).await?,
-            Command::MoveTo(_) => {
-                log::error!("Unhandled command `{:?}`", cmd);
-                todo!()
-            }
+            Command::MoveTo(spans) => self.process_move_to(spans).await?,
             Command::Next(range, code) => self.process_next(range, code).await?,
         }
 
@@ -189,5 +186,33 @@ impl CommandProcessor {
         })?;
 
         self.send(ProtocolCall::EditAt(state_id)).await
+    }
+
+    /// Process a [`Command::MoveTo`] by sending [`ProtocolCall::Add`]s for each individual piece of code.
+    async fn process_move_to(&mut self, spans: Vec<(CodeSpan, String)>) -> io::Result<()> {
+        let mut state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
+            let coq_state = self
+                .coq_state
+                .lock()
+                .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
+
+            Ok(coq_state.get_current_state_id())
+        })?;
+
+        for (range, code) in spans {
+            tokio::task::block_in_place(|| -> io::Result<()> {
+                let mut coq_state = self
+                    .coq_state
+                    .lock()
+                    .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
+
+                coq_state.push_range(state_id, range);
+                Ok(())
+            })?;
+            self.send(ProtocolCall::Add(code, state_id)).await?;
+            state_id += 1;
+        }
+
+        Ok(())
     }
 }

@@ -68,7 +68,7 @@ impl IdeSlave {
         let main_w = async { main_w_listen.accept().await };
 
         let ports = [main_r_port, main_w_port];
-        let flags = ["-async-proofs", "on", "-topfile", &topfile];
+        let flags = [/*"-async-proofs", "on",*/ "-topfile", &topfile];
 
         let coqidetop = async { coqidetop(tmp_dir, ports, flags).await };
 

@@ -1,5 +1,12 @@
 This plugin aims at providing a functional and usable `coqidetop` wrapper for use with Kakoune.
 
+**Disclaimer:** While this plugin somehow works sometimes, it is definitely hard to test it.
+The goal was to create a correct wrapper for using Coq in Kakoune, and it has been realized.
+However, working with an undocumented protocol (yes, the XML protocol of `coqidetop` is undocumented for the most part; I had to check
+in other plugins such as Coqoune or VSCoq to understand some queries) as well as a heavily asynchronous codebase is very hard, and I do
+not feel like I'll be really maintaining this plugin in the future.
+This was more like a Proof of Concept than a real usable product (it is usable! But be aware that bugs will happen).
+
 -----------------
 
 P.S.: [coqoune](https://github.com/guest0x0/coqoune) is the same kind of project, and was started way before this one.

@@ -8,21 +8,31 @@ use crate::{files::command_file, kakoune::command_line::kak};
 
 use super::types::Command;
 
+/// A command receiver, streaming a Unix socket to an unbounded channel.
 pub struct CommandReceiver {
+    /// The transmitting end of the unbounded channel, used to send user commands to
+    /// the command processor.
     pipe_tx: mpsc::UnboundedSender<Command>,
-    stop_rx: watch::Receiver<()>,
 }
 
 impl CommandReceiver {
-    pub fn new(pipe_tx: mpsc::UnboundedSender<Command>, stop_rx: watch::Receiver<()>) -> Self {
-        Self { pipe_tx, stop_rx }
+    /// Constructs a new command receiver.
+    pub fn new(pipe_tx: mpsc::UnboundedSender<Command>) -> Self {
+        Self { pipe_tx }
     }
 
+    /// Tries to receive user commands from a Unix socket.
+    ///
+    /// The Unix socket is initialized internally by using [`command_file`] to retrieve the path, and
+    /// dropped at the end of this function.
+    ///
+    /// Additional calls are performed to correctly initialize Kakoune and connect it to the socket.
     pub async fn process(
         &mut self,
         kak_session: String,
         tmp_dir: String,
         coq_file: String,
+        mut stop_rx: watch::Receiver<()>,
     ) -> io::Result<()> {
         let pipe_listener = UnixListener::bind(command_file(&tmp_dir))?;
 
@@ -51,7 +61,7 @@ impl CommandReceiver {
 
         let res = loop {
             tokio::select! {
-                Ok(_) = self.stop_rx.changed() => break Ok::<_, io::Error>(()),
+                Ok(_) = stop_rx.changed() => break Ok::<_, io::Error>(()),
                 Ok(cmd) = Command::parse_from(&mut pipe) => {
                     match cmd {
                         None => break Ok::<_, io::Error>(()),
@@ -74,6 +84,7 @@ impl CommandReceiver {
         res
     }
 
+    /// Stops the command receiver (currently does nothing).
     pub async fn stop(&mut self) -> io::Result<()> {
         Ok(())
     }

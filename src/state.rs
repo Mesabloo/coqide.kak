@@ -2,12 +2,17 @@ use std::cmp::Ordering;
 
 use bimap::BiMap;
 
+/// The current state of the daemon:
+/// - [`ErrorState::Ok`] means that everything is fine and we can continue.
+/// - [`ErrorState::Error`] means that an error occured somewhere in your Coq code (e.g. a syntax error)
+///   therefore the daemon is unable to continue its work.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ErrorState {
     Ok,
     Error,
 }
 
+/// A very simply code span structure containing beginning and ending positions.
 #[derive(PartialEq, Eq, Ord, Hash, Debug, Clone, Copy)]
 pub struct CodeSpan {
     begin_line: u64,
@@ -17,6 +22,7 @@ pub struct CodeSpan {
 }
 
 impl CodeSpan {
+    /// Creates a new code span.
     pub fn new(begin_line: u64, begin_column: u64, end_line: u64, end_column: u64) -> Self {
         Self {
             begin_line,
@@ -25,9 +31,11 @@ impl CodeSpan {
             end_column,
         }
     }
-}
 
-impl CodeSpan {
+    /// Extends a range using another one, only if it grows.
+    /// For example, given a span `1.1,5.2`:
+    /// - if it is extended with `1.1,6.3`, then the resulting range is `1.1,6.3`.
+    /// - if it is extended with `1.1,3.5`, the resulting range is `1.1,5.2`.
     pub fn extend(self, other: &CodeSpan) -> Self {
         Self {
             begin_line: if other.begin_line <= self.begin_line {
@@ -67,6 +75,7 @@ impl CodeSpan {
 }
 
 impl Default for CodeSpan {
+    /// The default range is `1.1,1.1`.
     fn default() -> Self {
         Self {
             begin_line: 1,
@@ -96,6 +105,7 @@ impl PartialOrd for CodeSpan {
 }
 
 impl std::fmt::Display for CodeSpan {
+    /// Outputs a range using the format `<begin_line>.<begin_column>,<end_line>.<end_column>`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -107,6 +117,12 @@ impl std::fmt::Display for CodeSpan {
 
 ///////////////////////////////////::
 
+/// The current daemon state, holding
+/// - if the daemon has errored out or not
+/// - mappings from state IDs to processed ranges
+/// - the root state ID returned when calling `Init`
+/// - the current state ID
+/// - whether the last processed statements changed the processing range or not.
 pub struct CoqState {
     error_state: ErrorState,
     state_id_to_range: BiMap<i64, CodeSpan>,
@@ -116,6 +132,11 @@ pub struct CoqState {
 }
 
 impl CoqState {
+    /// Creates a new daemon state with the following attributes:
+    /// - `error state = Ok`
+    /// - no mappings
+    /// - `root ID = current ID = 0`
+    /// - no statements processed
     pub fn new() -> Self {
         Self {
             error_state: ErrorState::Ok,
@@ -136,14 +157,17 @@ impl CoqState {
         self.error_state = ErrorState::Ok;
     }
 
+    /// Returns the current error state.
     pub fn get_error_state(&self) -> ErrorState {
         self.error_state
     }
 
+    /// Nothing was processed anymore.
     pub fn reset_last_processed(&mut self) {
         self.last_processed = false;
     }
 
+    /// Sets the current state ID (and the root ID if it wasn't set already).
     pub fn set_current_state_id(&mut self, state_id: i64) {
         if self.root_id == 0 {
             self.root_id = state_id;
@@ -151,6 +175,7 @@ impl CoqState {
         self.current_id = state_id;
     }
 
+    /// Retrieves the current state ID (which may be the root ID).
     pub fn get_current_state_id(&self) -> i64 {
         if self.current_id == 0 {
             self.root_id
@@ -166,6 +191,7 @@ impl CoqState {
             .unwrap_or_else(|| CodeSpan::default())
     }
 
+    /// Adds a new processed range associated with a state ID to the state.
     pub fn push_range(&mut self, state_id: i64, range: CodeSpan) {
         self.state_id_to_range.insert(state_id, range);
         self.last_processed = true;
@@ -184,7 +210,10 @@ impl CoqState {
         );
     }
 
-    pub fn backtrack_to_position(&mut self, line: u64, col: u64) {
+    /// Backtrack to the last state before the indicated position.
+    ///
+    /// The last state is defined as the farthest range not containing the given `line.col` coordinates.
+    pub fn backtrack_before_position(&mut self, line: u64, col: u64) {
         let is_before = |span: &CodeSpan| -> bool {
             span.end_line < line || (span.end_line == line && span.end_column < col)
         };
@@ -201,12 +230,14 @@ impl CoqState {
         );
     }
 
+    /// Retrieves the entire processed range in the daemon state.
     pub fn processed_range(&self) -> CodeSpan {
         self.state_id_to_range
             .right_values()
             .fold(CodeSpan::default(), CodeSpan::extend)
     }
 
+    /// Removes the last processed range from the daemon state.
     pub fn backtrack_last_processed(&mut self) {
         if self.last_processed {
             let state_id = self.get_current_state_id();

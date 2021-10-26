@@ -42,11 +42,34 @@ pub enum ProtocolValue {
 #[derive(Debug, Clone)]
 pub enum ProtocolResult {
     /// Everything went well, and `coqidetop` responded with some value.
-    Good(ProtocolValue),
+    Good(
+        /// A value trasmitted with the good response.
+        ProtocolValue,
+    ),
     /// An error occured.
-    Fail(Option<i64>, Option<i64>, ProtocolRichPP),
+    Fail(
+        /// The optional line number where the error occured.
+        Option<i64>,
+        /// The optional column number where the error occured.
+        Option<i64>,
+        /// An associated error message describing what has gone wrong.
+        ProtocolRichPP,
+    ),
     /// Feedback from the daemon.
-    Feedback(String, String, ProtocolValue, FeedbackContent),
+    Feedback(
+        /// **UNUSED**
+        ///
+        /// The object the feedback relates to.
+        String,
+        /// **UNUSED**
+        ///
+        /// The route ID of the feedback.
+        String,
+        /// The state ID the feedback relates to.
+        ProtocolValue,
+        /// The content of the feedback.
+        FeedbackContent,
+    ),
 }
 
 /// The content of a feedback [`ProtocolResult`].
@@ -65,7 +88,7 @@ pub enum FeedbackContent {
 /// The type of pretty-printed text.
 #[derive(Debug, Clone)]
 pub enum ProtocolRichPP {
-    /// TMP
+    /// The raw text contained inside a `<richpp>` node, where child nodes are also rendered.
     Raw(String),
 }
 
@@ -73,19 +96,33 @@ pub enum ProtocolRichPP {
 #[derive(Debug, Clone)]
 pub enum ProtocolCall {
     /// Initialize the process.
-    Init(ProtocolValue),
+    Init(
+        /// This [`ProtocolValue`] must be of the form `Optional(_)`.
+        ProtocolValue,
+    ),
     /// Quit.
     Quit,
     /// Go back to a previous state.
-    EditAt(i64),
+    EditAt(
+        /// Represents the state ID to go back to.
+        i64,
+    ),
     /// Query some Coq statements in a disposable context.
-    ///
-    /// The value transported must be of the form `Pair(box RouteId(_), Pair(box Str(_), box StateId(_)))`.
-    Query(ProtocolValue),
+    Query(
+        /// The value transported must be of the form `Pair(box RouteId(_), Pair(box Str(_), box StateId(_)))`.
+        ProtocolValue,
+    ),
     /// Fetch some hints.
     Hints,
     /// Get all current goals.
     Goal,
-    /// Send some piece of code to [`COQTOP`]
-    Add(String, i64),
+    /// Send some piece of code to [`COQTOP`].
+    ///
+    /// [`COQTOP`]: crate::coqtop::slave::COQTOP
+    Add(
+        /// The code to be sent for verification.
+        String,
+        /// The state ID it is tied to.
+        i64,
+    ),
 }

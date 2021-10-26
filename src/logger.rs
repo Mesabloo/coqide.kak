@@ -1,4 +1,4 @@
-use std::{io, path::Path, sync::Arc};
+use std::{io, path::Path};
 
 use log::LevelFilter;
 use log4rs::{

@@ -22,10 +22,16 @@ use crate::{
     state::CoqState,
 };
 
+/// Communication utilities for `coqidetop` as well as a custom XML parser
+/// for its protocol.
 mod coqtop;
+/// Additional helper functions to retrieve paths to important files.
 mod files;
+/// Anything related to communicating with Kakoune.
 mod kakoune;
+///
 mod logger;
+/// Defines the state of the daemon.
 mod state;
 
 #[tokio::main]
@@ -73,7 +79,7 @@ async fn main() -> io::Result<()> {
     let coq_state = Arc::new(RwLock::new(CoqState::new()));
 
     let mut ideslave = IdeSlave::new(call_rx, cmd_tx.clone(), &tmp_dir, coq_file.clone()).await?;
-    let mut kakoune_command_receiver = CommandReceiver::new(pipe_tx, stop_rx.clone());
+    let mut kakoune_command_receiver = CommandReceiver::new(pipe_tx);
     let mut kakoune_command_processor = CommandProcessor::new(
         pipe_rx,
         call_tx,
@@ -91,7 +97,7 @@ async fn main() -> io::Result<()> {
                 stop_tx.send(()).unwrap();
                 break Ok(());
             }
-            res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone()) => break res,
+            res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone(), stop_rx.clone()) => break res,
             res = kakoune_command_processor.process(stop_rx.clone()) => break res,
             res = ideslave.process(coq_state.clone(), stop_rx.clone()) => break res,
             res = kakslave.process(stop_rx.clone()) => break res,

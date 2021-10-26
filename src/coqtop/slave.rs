@@ -12,18 +12,25 @@ use tokio::{
     sync::{mpsc, watch},
 };
 
-use crate::{coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP}, files::{goal_file, result_file}, logger, state::{CoqState, ErrorState}};
+use crate::{
+    coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP},
+    files::{goal_file, result_file},
+    logger,
+    state::{CoqState, ErrorState},
+};
 
 use super::xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolValue};
 
 /// The name of the process used for IDE interactions with Coq.
-pub static COQTOP: &'static str = "coqidetop";
+pub const COQTOP: &'static str = "coqidetop";
 
 /// The structure encapsulating all communications with the underlying [`COQTOP`] process.
 pub struct IdeSlave {
     /// The main channel where [`COQTOP`] sends its responses.
     main_r: TcpStream,
-    /// The main channel to send commands (calls, see [`ProcotolCall`]) to [`COQTOP`].
+    /// The main channel to send commands (calls, see [`ProtocolCall`]) to [`COQTOP`].
+    ///
+    /// [`ProtocolCall`]: crate::coqtop::xml_protocol::types::ProtocolCall
     main_w: TcpStream,
     /// The [`COQTOP`] process itself.
     coqidetop: Child,
@@ -38,7 +45,7 @@ pub struct IdeSlave {
 }
 
 impl IdeSlave {
-    /// Creates a new [`ideSlave`] by spawning 4 TCP sockets as well as a [`COQTOP`] process.
+    /// Creates a new [`IdeSlave`] by spawning 2 or 4 TCP sockets as well as a [`COQTOP`] process.
     pub async fn new(
         call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
         cmd_tx: mpsc::UnboundedSender<String>,
@@ -82,18 +89,6 @@ impl IdeSlave {
             result_file,
             goal_file,
         })
-    }
-
-    /// Send a [`ProtocolCall`] to the underlying [`COQTOP`] process.
-    async fn send(&mut self, call: ProtocolCall) -> io::Result<()> {
-        let encoded = call.encode();
-        log::debug!("Sending encoded command `{}` to {}", encoded, COQTOP);
-
-        self.main_w.write_all(encoded.as_bytes()).await
-    }
-
-    async fn recv(&mut self) -> io::Result<ProtocolResult> {
-        ProtocolResult::decode_stream(&mut self.main_r).await
     }
 
     /// Runs a join point which processes anything related to [`COQTOP`]:
@@ -142,7 +137,7 @@ impl IdeSlave {
         }
     }
 
-    ///
+    /// Tries to process a response from [`COQTOP`] by modyfing the current daemon state.
     async fn process_response(
         &mut self,
         coq_state: Arc<RwLock<CoqState>>,
@@ -206,20 +201,21 @@ impl IdeSlave {
         Ok(())
     }
 
-    ///
+    /// Writes a message to the result buffer, overwriting everything that was previously in it.
     async fn output_to_result(&mut self, msg: String) -> io::Result<()> {
         self.result_file.set_len(0).await?;
         self.result_file.seek(SeekFrom::Start(0)).await?;
         self.result_file.write_all(msg.as_bytes()).await
     }
 
-    ///
+    /// Sends a command through the command channel to Kakoune.
     async fn send_command(&self, cmd: String) -> io::Result<()> {
         self.cmd_tx
             .send(cmd)
             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))
     }
 
+    /// Refreshes the currently processed range in Kakoune.
     async fn refresh_processed(&self, coq_state: Arc<RwLock<CoqState>>) -> io::Result<()> {
         let cmd = tokio::task::block_in_place(|| -> io::Result<String> {
             let coq_state = coq_state
@@ -257,7 +253,7 @@ async fn create_listener() -> io::Result<(TcpListener, u16)> {
     Ok((listen, port))
 }
 
-/// Spawns a new [`COQTOP`] process given the 4 ports it should connect to
+/// Spawns a new [`COQTOP`] process given the 2 or 4 ports it should connect to
 /// (in order: `[main_r, main_w, control_r, control_w]`) as well as some more flags
 /// (e.g. `["-topfile", file]`).
 async fn coqidetop<const N: usize>(

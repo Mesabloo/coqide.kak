@@ -14,14 +14,19 @@ use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
 
+/// A generic representation of the XML node `<name attributes...>children...</name>`.
 #[derive(Clone, Debug)]
 pub struct XMLNode {
+    /// The name of the node.
     pub name: String,
+    /// All attributes present in the tag.
     pub attributes: HashMap<String, String>,
+    /// A list of all children inside the node.
     pub children: Vec<Child>,
 }
 
 impl Default for XMLNode {
+    /// Creates a new XML node with no name, no attributes and no children.
     fn default() -> Self {
         XMLNode {
             name: String::new(),
@@ -31,6 +36,11 @@ impl Default for XMLNode {
     }
 }
 
+/// The child of a XML node.
+///
+/// It is either:
+/// - another [`XMLNode`]
+/// - some raw text
 #[derive(Clone, Debug)]
 pub enum Child {
     Node(XMLNode),
@@ -94,6 +104,7 @@ impl Decoder for XMLDecoder {
 }
 
 impl XMLNode {
+    /// Decodes a stream chunks by chunks until a complete XML node can be decoded.
     pub async fn decode_stream<R>(stream: R) -> io::Result<Self>
     where
         R: AsyncRead + Unpin,
@@ -110,6 +121,7 @@ impl XMLNode {
             })
     }
 
+    /// Retrieves all the raw text inside a node.
     pub fn get_text(&self) -> String {
         self.children
             .iter()
@@ -118,6 +130,7 @@ impl XMLNode {
             .join("")
     }
 
+    /// Tries to retrieve the first child whose tag name is `name`.
     pub fn get_child(&self, name: String) -> Option<&XMLNode> {
         for child in &self.children {
             if let Some(node) = child.as_node() {
@@ -131,6 +144,7 @@ impl XMLNode {
 }
 
 impl Child {
+    /// Tries to convert the current child into a [`XMLNode`] if it was one.
     pub fn as_node(&self) -> Option<&XMLNode> {
         match self {
             Child::Node(n) => Some(n),
@@ -138,6 +152,7 @@ impl Child {
         }
     }
 
+    /// Retrieves the raw text the child is.
     pub fn raw(&self) -> Option<&String> {
         match self {
             Child::Raw(str) => Some(str),

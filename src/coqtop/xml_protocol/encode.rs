@@ -2,7 +2,7 @@ use super::types::ProtocolCall::{self, *};
 use super::types::ProtocolValue::{self, *};
 
 impl ProtocolValue {
-    /// Encode a protocol value as XML to be sent to the `coqidetop` process
+    /// Encode a protocol value as XML to be sent to the `coqidetop` process.
     pub fn encode(self) -> String {
         match self {
             Unit => "<unit/>".to_string(),
@@ -35,6 +35,12 @@ impl ProtocolValue {
     }
 }
 
+/// Escapes special characters like `&` or `<` to their XML equivalents `&amp;`, `&lt;`, etc.
+///
+/// Currently, this only escapes those characters:
+/// - `&` → `&amp;`
+/// - `<` → `&lt;`
+/// - `>` → `&gt;`
 fn escape(str: String) -> String {
     str.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -44,6 +50,7 @@ fn escape(str: String) -> String {
 }
 
 impl ProtocolCall {
+    /// Encode a protocol call as XML to be sent to the `coqidetop` process.
     pub fn encode(self) -> String {
         match self {
             Init(val) => format!("<call val=\"Init\">{}</call>", val.encode()),

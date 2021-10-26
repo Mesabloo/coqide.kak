@@ -1,4 +1,7 @@
-use std::{process, sync::{Arc, RwLock}};
+use std::{
+    process,
+    sync::{Arc, RwLock},
+};
 
 use tokio::{
     fs::File,
@@ -13,15 +16,27 @@ use crate::{
 
 use super::types::Command;
 
+/// The command processor receives commands, processes them and modifies the current daemon state
+/// and finally sends calls to the [`COQTOP`] process.
+///
+/// [`COQTOP`]: crate::coqtop::slave::COQTOP
 pub struct CommandProcessor {
+    /// The receiving end of the command pipe, where user commands flow towards.
     pipe_rx: mpsc::UnboundedReceiver<Command>,
+    /// The transmitting end of the call channel, where [`ProtocolCall`]s are sent to the [`COQTOP`] process.
+    ///
+    /// [`COQTOP`]: crate::coqtop::slave::COQTOP
     call_tx: mpsc::UnboundedSender<ProtocolCall>,
+    /// The current daemon state.
     coq_state: Arc<RwLock<CoqState>>,
+    /// The file holding the current goals.
     goal_file: File,
+    /// The file holding any feedback to the user.
     result_file: File,
 }
 
 impl CommandProcessor {
+    /// Creates a new command processor.
     pub async fn new(
         pipe_rx: mpsc::UnboundedReceiver<Command>,
         call_tx: mpsc::UnboundedSender<ProtocolCall>,
@@ -41,22 +56,18 @@ impl CommandProcessor {
         })
     }
 
+    /// Runs the command processor continuously until a message is received through
+    /// the `stop_rx` parameter.
     pub async fn process(&mut self, mut stop_rx: watch::Receiver<()>) -> io::Result<()> {
         loop {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok(()),
-                Some(cmd) = self.pipe_rx.recv() => {
-                    // TODO: process commands with the current state
-
-                    // Reset the error state when receiving a new command
-                    //tokio::task::block_in_place(|| self.ok())?;
-
-                    self.process_command(cmd).await?;
-                }
+                Some(cmd) = self.pipe_rx.recv() => self.process_command(cmd).await?,
             }
         }
     }
 
+    /// Sends a [`ProtocolCall`] through the call channel.
     #[inline]
     async fn send(&mut self, call: ProtocolCall) -> io::Result<()> {
         self.call_tx
@@ -64,9 +75,13 @@ impl CommandProcessor {
             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))
     }
 
+    /// Tries to process a receive user command.
+    ///
+    /// The corresponding `self.process_XXX` (where `XXX` is the command) are called.
     async fn process_command(&mut self, cmd: Command) -> io::Result<()> {
         tokio::task::block_in_place(|| -> io::Result<()> {
-            let mut coq_state = self.coq_state
+            let mut coq_state = self
+                .coq_state
                 .write()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
             coq_state.reset_last_processed();
@@ -96,13 +111,13 @@ impl CommandProcessor {
 
     /////////////////////////////////////////////////////////:
 
+    /// Process a [`Command::Init`] call by simply sending an empty [`ProtocolCall::Init`].
     async fn process_init(&mut self) -> io::Result<()> {
         self.send(ProtocolCall::Init(ProtocolValue::Optional(None)))
-            .await?;
-
-        Ok(())
+            .await
     }
 
+    /// Process a [`Command::Quit`] by killing ourselves with a [`libc::SIGINT`] signal.
     async fn process_quit(&mut self) -> io::Result<()> {
         tokio::task::spawn_blocking(|| {
             unsafe {
@@ -113,6 +128,8 @@ impl CommandProcessor {
         .await?
     }
 
+    /// Process a [`Command::RewindTo`] by backtracking to the correct state and sending a [`ProtocolCall::EditAt`] wrapping
+    /// the new current state ID.
     async fn process_rewind_to(&mut self, line: u64, col: u64) -> io::Result<()> {
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
@@ -120,13 +137,14 @@ impl CommandProcessor {
                 .write()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
-            coq_state.backtrack_to_position(line, col);
+            coq_state.backtrack_before_position(line, col);
             Ok(coq_state.get_current_state_id())
         })?;
 
         self.send(ProtocolCall::EditAt(state_id)).await
     }
 
+    /// Process a [`Command::Next`] by pushing the new code range to the daemon state, and sending a [`ProtocolCall::Add`].
     async fn process_next(&mut self, range: CodeSpan, code: String) -> io::Result<()> {
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
@@ -142,6 +160,7 @@ impl CommandProcessor {
         self.send(ProtocolCall::Add(code, state_id)).await
     }
 
+    /// Process a [`Command::Query`] by sending the query string along with the current state ID inside a [`ProtocolCall::Query`].
     async fn process_query(&mut self, query: String) -> io::Result<()> {
         use ProtocolValue::*;
 

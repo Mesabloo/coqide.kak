@@ -188,7 +188,8 @@ impl IdeSlave {
             }
             ProtocolResult::Feedback(_, _, _, Message(ProtocolRichPP::Raw(msg))) => {
                 self.output_to_result(msg).await?;
-                self.send_command(String::new()).await?;
+                // self.send_command(String::new()).await?;
+                self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Feedback(_, _, _, Processed) => {
                 self.refresh_processed(coq_state).await?;

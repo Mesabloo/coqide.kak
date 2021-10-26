@@ -185,6 +185,8 @@ define-command -docstring "
     evaluate-commands %sh{
       if ! [ -f "$kak_opt_coqide_move_tmp_file" ]; then
         touch "$kak_opt_coqide_move_tmp_file"
+      else
+        printf '' >"$kak_opt_coqide_move_tmp_file"
       fi
       
       IFS=" .,|" read -r _ _ _ line0 col0 _ <<< "$kak_opt_coqide_processed_range"
@@ -200,7 +202,7 @@ define-command -docstring "
       echo "set-option buffer coqide_move_line1 '$line1'"
       echo "set-option buffer coqide_move_col1 '$col1'"
 
-      if [ $line0 -ne 1 -a $col0 -ne 1 ]; then
+      if ! [ $line0 -eq 1 -a $col0 -eq 1 ]; then
         echo "set-option -add buffer coqide_move_col0 1"
       fi
     }
@@ -217,7 +219,7 @@ define-command -docstring "
         # Go to the last processed line and column and select everything in the buffer
         # until the end
         keys="${kak_opt_coqide_move_line0}ggh"
-        if [ $kak_opt_coqide_move_line0 -ne 1 -a $kak_opt_coqide_move_col0 -ne 1 ]; then
+        if ! [ $kak_opt_coqide_move_line0 -eq 1 -a $kak_opt_coqide_move_col0 -eq 1 ]; then
           keys="${keys}${kak_opt_coqide_move_col0}l"
         fi
         keys="${keys}Ge<a-|>cat<space><gt>$kak_opt_coqide_move_tmp_file<ret>"
@@ -244,10 +246,14 @@ define-command -docstring "
         if [ ${bcol:-1} -ne 1 ]; then
           keys="$keys$((bcol - 1))l"
         fi
-        if [ ${bline:-0} -eq ${eline:-0} ]; then
+        if [ ${bline:-0} -eq ${eline:-1} ]; then
           keys="$keys$((ecol - bcol))L"
         else
-          keys="$keys$((eline - bline))JGh$((ecol - 1))L"
+          if [ ${eline:-1} -gt ${kak_buf_line_count:-1} ]; then
+            keys="${keys}Ge"
+          else
+            keys="$keys$((eline - bline))JGh$((ecol - 1))L"
+          fi
         fi
         echo "execute-keys %§$keys<a-|>printf<space>\"<percent>s\"<space>\"$position\\\"\$(sed<space>'s/\"/\\\\\"/g')\\\"<space>\"<space><gt><gt>$kak_opt_coqide_move_tmp_file<ret>§"
       done
@@ -293,6 +299,8 @@ define-command -docstring "
   evaluate-commands -draft %sh{
     if ! [ -f "$kak_opt_coqide_next_tmp_file" ]; then
       touch "$kak_opt_coqide_next_tmp_file"
+    else
+      printf '' >"$kak_opt_coqide_next_tmp_file"
     fi
     
     # <timestamp> <begin_line>.<begin_column>,<end_line>.<end_column>|<face>
@@ -301,7 +309,7 @@ define-command -docstring "
     col0=${col0:-1}
 
     keys="${line0}ggh"
-    if [ $line0 -ne 1 -a $col0 -ne 1 ]; then
+    if ! [ $line0 -eq 1 -a $col0 -eq 1 ]; then
       keys="${keys}${col0}l"
     fi
     keys="${keys}Ge<a-|>cat<space><gt>$kak_opt_coqide_next_tmp_file<ret>"
@@ -309,7 +317,7 @@ define-command -docstring "
     echo "set-option buffer coqide_next_line0 '$line0'"
     echo "set-option buffer coqide_next_col0 '$col0'"
 
-    if [ $line0 -ne 1 -a $col0 -ne 1 ]; then
+    if ! [ $line0 -eq 1 -a $col0 -eq 1 ]; then
       echo "set-option -add buffer coqide_next_col0 1"
     fi
   }
@@ -323,10 +331,14 @@ define-command -docstring "
     if [ ${bcol:-1} -ne 1 ]; then
       keys="$keys$((bcol - 1))l"
     fi
-    if [ ${bline:-0} -eq ${eline:-0} ]; then
+    if [ ${bline:-1} -eq ${eline:-1} ]; then
       keys="$keys$((ecol - bcol))L"
     else
-      keys="$keys$((eline - bline))JGh$((ecol - 1))L"
+      if [ ${eline:-1} -gt ${kak_buf_line_count:-1} ]; then
+        keys="${keys}Ge"
+      else
+        keys="$keys$((eline - bline))JGh$((ecol - 1))L"
+      fi
     fi
     echo "execute-keys %§$keys<a-|>sed<space>'s/\"/\\\\\"/g'<space><gt>$kak_opt_coqide_next_tmp_file<ret>§"
     echo "set-option buffer coqide_next_span '$next_range'"

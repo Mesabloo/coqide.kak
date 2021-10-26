@@ -170,6 +170,11 @@ impl CoqState {
 
     /// Sets the current state ID (and the root ID if it wasn't set already).
     pub fn set_current_state_id(&mut self, state_id: i64) {
+        // NOTE: do not backtrack
+        //if self.current_id > state_id {
+        //    return;
+        //}
+
         if self.root_id == 0 {
             self.root_id = state_id;
         }
@@ -187,8 +192,12 @@ impl CoqState {
 
     /// Gets the range associated with the current state ID, or `1.1,1.1` if none can be found.
     pub fn get_current_range(&self) -> CodeSpan {
-        let max_id = *self.state_id_to_range.left_values().max().unwrap_or(&self.root_id);
-      
+        let max_id = *self
+            .state_id_to_range
+            .left_values()
+            .max()
+            .unwrap_or(&self.root_id);
+
         self.state_id_to_range
             .get_by_left(&max_id)
             .cloned()
@@ -212,13 +221,11 @@ impl CoqState {
         self.state_id_to_range.retain(|_, span| is_before(span));
         self.last_processed = false;
 
-        self.set_current_state_id(
-            *self
-                .state_id_to_range
-                .left_values()
-                .max()
-                .unwrap_or(&self.root_id),
-        );
+        self.current_id = *self
+            .state_id_to_range
+            .left_values()
+            .max()
+            .unwrap_or(&self.root_id);
     }
 
     /// Retrieves the entire processed range in the daemon state.
@@ -234,23 +241,31 @@ impl CoqState {
             let state_id = self.get_current_state_id();
             self.state_id_to_range.remove_by_left(&state_id);
 
-            self.set_current_state_id(
-                *self
-                    .state_id_to_range
-                    .left_values()
-                    .max()
-                    .unwrap_or(&self.root_id),
-            );
+            self.current_id = *self
+                .state_id_to_range
+                .left_values()
+                .max()
+                .unwrap_or(&self.root_id);
 
             self.last_processed = false;
         }
     }
 
     /// Go back one state.
-    pub fn backtrack_one_state(&mut self) {
-        let range = self.get_current_range();
-        self.backtrack_before_position(range.begin_line, range.begin_column + 1);
+    pub fn backtrack_one_state(&mut self) -> i64 {
+        let state_id = *self
+            .state_id_to_range
+            .left_values()
+            .max()
+            .unwrap_or(&self.root_id);
+          
+        self.state_id_to_range.remove_by_left(&state_id);
+        self.current_id = *self
+            .state_id_to_range
+            .left_values()
+            .max()
+            .unwrap_or(&self.root_id);
 
-        self.set_current_state_id(self.get_current_state_id() + 1);
+        state_id
     }
 }

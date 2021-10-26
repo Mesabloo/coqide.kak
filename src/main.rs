@@ -2,7 +2,7 @@
 #![feature(async_closure)]
 #![feature(io_error_more)]
 
-use std::{env, path::Path, process::exit, sync::{Arc, RwLock}};
+use std::{env, path::Path, process::exit, sync::{Arc, Mutex}};
 
 use async_signals::Signals;
 use tokio::{
@@ -76,7 +76,7 @@ async fn main() -> io::Result<()> {
     //
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<String>();
 
-    let coq_state = Arc::new(RwLock::new(CoqState::new()));
+    let coq_state = Arc::new(Mutex::new(CoqState::new()));
 
     let mut ideslave = IdeSlave::new(call_rx, cmd_tx.clone(), &tmp_dir, coq_file.clone()).await?;
     let mut kakoune_command_receiver = CommandReceiver::new(pipe_tx);
@@ -97,11 +97,11 @@ async fn main() -> io::Result<()> {
                 stop_tx.send(()).unwrap();
                 break Ok(());
             }
+            res = ideslave.process(coq_state.clone(), stop_rx.clone()) => break res,
             res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone(), stop_rx.clone()) => break res,
             res = kakoune_command_processor.process(stop_rx.clone()) => break res,
-            res = ideslave.process(coq_state.clone(), stop_rx.clone()) => break res,
             res = kakslave.process(stop_rx.clone()) => break res,
-            else => {}
+            // else => {}
         }
     }?;
 

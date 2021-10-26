@@ -1,12 +1,9 @@
-use super::{
-    parser::XMLNode,
-    types::{
+use super::{parser::{XMLDecoder, XMLNode}, types::{
         FeedbackContent,
         ProtocolResult::{self, *},
         ProtocolRichPP::{self, *},
         ProtocolValue::{self, *},
-    },
-};
+    }};
 use std::io;
 use tokio::io::AsyncRead;
 
@@ -27,6 +24,7 @@ pub enum DecodeError {
 }
 
 use DecodeError::*;
+use tokio_util::codec::FramedRead;
 
 impl std::fmt::Debug for DecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -265,14 +263,16 @@ impl ProtocolResult {
 
     /// Tries to decode a [`ProtocolResult`] from a streaming [`AsyncRead`] by first decoding a [`XMLNode`]
     /// and then using [`ProtocolResult::decode`] on it.
-    pub async fn decode_stream<R>(stream: R) -> io::Result<Self>
+    pub async fn decode_stream<R>(reader: &mut FramedRead<R, XMLDecoder>) -> io::Result<Self>
     where
         R: AsyncRead + Unpin,
     {
-        let elem = XMLNode::decode_stream(stream).await?;
-        log::debug!(">>> {:?}", elem);
-
-        ProtocolResult::decode(elem)
+        tokio::select! {
+            Ok(elem) = XMLNode::decode_stream(reader) => {
+                ProtocolResult::decode(elem)
+            }
+            else => Err(io::Error::new(io::ErrorKind::BrokenPipe, "Cannot decode XML node")),
+        }
     }
 }
 

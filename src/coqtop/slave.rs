@@ -1,6 +1,6 @@
 use std::{
     io::{self, SeekFrom},
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex},
 };
 
 use tokio::{
@@ -11,6 +11,7 @@ use tokio::{
     process::{Child, Command},
     sync::{mpsc, watch},
 };
+use tokio_util::codec::FramedRead;
 
 use crate::{
     coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP},
@@ -19,7 +20,10 @@ use crate::{
     state::{CoqState, ErrorState},
 };
 
-use super::xml_protocol::types::{ProtocolCall, ProtocolResult, ProtocolValue};
+use super::xml_protocol::{
+    parser::{xml_decoder, XMLDecoder},
+    types::{ProtocolCall, ProtocolResult, ProtocolValue},
+};
 
 /// The name of the process used for IDE interactions with Coq.
 pub const COQTOP: &'static str = "coqidetop";
@@ -27,7 +31,7 @@ pub const COQTOP: &'static str = "coqidetop";
 /// The structure encapsulating all communications with the underlying [`COQTOP`] process.
 pub struct IdeSlave {
     /// The main channel where [`COQTOP`] sends its responses.
-    main_r: TcpStream,
+    //main_r: TcpStream,
     /// The main channel to send commands (calls, see [`ProtocolCall`]) to [`COQTOP`].
     ///
     /// [`ProtocolCall`]: crate::coqtop::xml_protocol::types::ProtocolCall
@@ -42,6 +46,8 @@ pub struct IdeSlave {
     result_file: File,
     /// The file where goals are written.
     goal_file: File,
+
+    reader: FramedRead<TcpStream, XMLDecoder>,
 }
 
 impl IdeSlave {
@@ -80,14 +86,17 @@ impl IdeSlave {
         let result_file = File::create(result_file(&tmp_dir)).await?;
         let goal_file = File::create(goal_file(&tmp_dir)).await?;
 
+        let reader = xml_decoder(main_r);
+
         Ok(Self {
-            main_r,
+            //main_r,
             main_w,
             coqidetop,
             call_rx,
             cmd_tx,
             result_file,
             goal_file,
+            reader,
         })
     }
 
@@ -108,23 +117,17 @@ impl IdeSlave {
     ///   - else no special treatment is reserved, therefore we can ignore
     pub async fn process(
         &mut self,
-        coq_state: Arc<RwLock<CoqState>>,
+        coq_state: Arc<Mutex<CoqState>>,
         mut stop_rx: watch::Receiver<()>,
     ) -> io::Result<()> {
         loop {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok(()),
-                Some(call) = self.call_rx.recv() => {
-                    let encoded = call.encode();
-                    log::debug!("Sending encoded command `{}` to {}", encoded, COQTOP);
-
-                    self.main_w.write_all(encoded.as_bytes()).await?;
-                }
-                Ok(resp) = ProtocolResult::decode_stream(&mut self.main_r) => {
+                Ok(resp) = ProtocolResult::decode_stream(&mut self.reader) => {
                     log::debug!("Received response `{:?}` from {}", resp, COQTOP);
 
                     let error_state = tokio::task::block_in_place(|| -> io::Result<ErrorState> {
-                        let coq_state = coq_state.read()
+                        let coq_state = coq_state.lock()
                             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, format!("{:?}", err)))?;
                         Ok(coq_state.get_error_state())
                     })?;
@@ -133,6 +136,12 @@ impl IdeSlave {
                         self.process_response(coq_state.clone(), resp).await?;
                     }
                 }
+                Some(call) = self.call_rx.recv() => {
+                    let encoded = call.encode();
+                    log::debug!("Sending encoded command `{}` to {}", encoded, COQTOP);
+
+                    self.main_w.write_all(encoded.as_bytes()).await?;
+                }
             }
         }
     }
@@ -140,7 +149,7 @@ impl IdeSlave {
     /// Tries to process a response from [`COQTOP`] by modyfing the current daemon state.
     async fn process_response(
         &mut self,
-        coq_state: Arc<RwLock<CoqState>>,
+        coq_state: Arc<Mutex<CoqState>>,
         resp: ProtocolResult,
     ) -> io::Result<()> {
         use FeedbackContent::*;
@@ -151,7 +160,7 @@ impl IdeSlave {
             ProtocolResult::Good(StateId(state_id))
             | ProtocolResult::Good(Pair(box StateId(state_id), box _)) => {
                 tokio::task::block_in_place(|| -> io::Result<()> {
-                    let mut coq_state = coq_state.write().map_err(|err| {
+                    let mut coq_state = coq_state.lock().map_err(|err| {
                         io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
                     })?;
 
@@ -174,11 +183,11 @@ impl IdeSlave {
             // On fail, send the fail message to the result buffer
             ProtocolResult::Fail(_, _, ProtocolRichPP::Raw(msg)) => {
                 tokio::task::block_in_place(|| -> io::Result<()> {
-                    let mut coq_state = coq_state.write().map_err(|err| {
+                    let mut coq_state = coq_state.lock().map_err(|err| {
                         io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
                     })?;
 
-                    coq_state.backtrack_last_processed();
+                    //coq_state.backtrack_last_processed();
                     coq_state.error();
                     Ok(())
                 })?;
@@ -191,7 +200,15 @@ impl IdeSlave {
                 // self.send_command(String::new()).await?;
                 self.refresh_processed(coq_state).await?;
             }
-            ProtocolResult::Feedback(_, _, _, Processed) => {
+            ProtocolResult::Feedback(_, _, StateId(state_id), Processed) => {
+                tokio::task::block_in_place(|| -> io::Result<()> {
+                    let mut coq_state = coq_state.lock().map_err(|err| {
+                        io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
+                    })?;
+
+                    coq_state.set_current_state_id(state_id);
+                    Ok(())
+                })?;
                 self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Feedback(_, _, _, _) => {
@@ -217,10 +234,10 @@ impl IdeSlave {
     }
 
     /// Refreshes the currently processed range in Kakoune.
-    async fn refresh_processed(&self, coq_state: Arc<RwLock<CoqState>>) -> io::Result<()> {
+    async fn refresh_processed(&self, coq_state: Arc<Mutex<CoqState>>) -> io::Result<()> {
         let cmd = tokio::task::block_in_place(|| -> io::Result<String> {
             let coq_state = coq_state
-                .read()
+                .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
             Ok(format!(
@@ -235,7 +252,7 @@ impl IdeSlave {
     /// Drops the TCP sockets as well as the [`COQTOP`] process.
     pub async fn quit(mut self) -> io::Result<()> {
         log::debug!("Shutting down communication channels");
-        self.main_r.shutdown().await?;
+        //self.main_r.shutdown().await?;
         self.main_w.shutdown().await?;
 
         log::debug!("Stopping {}", COQTOP);

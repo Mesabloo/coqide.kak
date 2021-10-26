@@ -1,6 +1,6 @@
 use std::{
     process,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex},
 };
 
 use tokio::{
@@ -28,7 +28,7 @@ pub struct CommandProcessor {
     /// [`COQTOP`]: crate::coqtop::slave::COQTOP
     call_tx: mpsc::UnboundedSender<ProtocolCall>,
     /// The current daemon state.
-    coq_state: Arc<RwLock<CoqState>>,
+    coq_state: Arc<Mutex<CoqState>>,
     /// The file holding the current goals.
     goal_file: File,
     /// The file holding any feedback to the user.
@@ -40,7 +40,7 @@ impl CommandProcessor {
     pub async fn new(
         pipe_rx: mpsc::UnboundedReceiver<Command>,
         call_tx: mpsc::UnboundedSender<ProtocolCall>,
-        coq_state: Arc<RwLock<CoqState>>,
+        coq_state: Arc<Mutex<CoqState>>,
         goal_file: String,
         result_file: String,
     ) -> io::Result<Self> {
@@ -82,7 +82,7 @@ impl CommandProcessor {
         tokio::task::block_in_place(|| -> io::Result<()> {
             let mut coq_state = self
                 .coq_state
-                .write()
+                .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
             coq_state.reset_last_processed();
             coq_state.ok();
@@ -131,7 +131,7 @@ impl CommandProcessor {
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
                 .coq_state
-                .write()
+                .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
             coq_state.backtrack_before_position(line, col);
@@ -146,7 +146,7 @@ impl CommandProcessor {
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
                 .coq_state
-                .write()
+                .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
             let sid = coq_state.get_current_state_id();
@@ -164,7 +164,7 @@ impl CommandProcessor {
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let coq_state = self
                 .coq_state
-                .read()
+                .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
             Ok(coq_state.get_current_state_id())
@@ -182,11 +182,10 @@ impl CommandProcessor {
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
                 .coq_state
-                .write()
+                .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
-            coq_state.backtrack_one_state();
-            Ok(coq_state.get_current_state_id())
+            Ok(coq_state.backtrack_one_state())
         })?;
 
         self.send(ProtocolCall::EditAt(state_id)).await

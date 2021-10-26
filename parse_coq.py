@@ -12,6 +12,8 @@ def lazy_read_stdin():
   Lazily read stdin, characters per characters until EOF occurs.
   """
   while (line := sys.stdin.readline()):
+    # print(f'line read: {line.__repr__()}', file=sys.stderr)
+    
     for c in line:
       yield c
 
@@ -155,11 +157,11 @@ for char in lazy_read_stdin():
   # if we ended a comment, do not flip the variable `at_beginning_of_coq_line`
   # (we may have written `something. (*  *) - something_else`, in which case the `-` is at the beginning
   # of the statement)
-  if char == ')' and last_known_state == STATE_END_COMMENT or last_known_state == STATE_COMMENT:
+  if char == ')' and last_known_state in [STATE_END_COMMENT, STATE_COMMENT]:
     pass
   # When character is not a end of statement or a space, we are not at the beginning
   # of a coq statement anymore
-  elif char not in ['.', ' ', '\t', '-', '*', '+', '{', '}']:
+  elif char not in ['.', ' ', '\t', '-', '*', '+', '{', '}'] and last_known_state not in [STATE_COMMENT, STATE_END_COMMENT]:
     at_beginning_of_coq_line = False
 
   if char == '\n':

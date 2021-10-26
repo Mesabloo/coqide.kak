@@ -47,7 +47,7 @@ pub enum Child {
     Raw(String),
 }
 
-struct XMLDecoder {
+pub struct XMLDecoder {
     state: AnyPartialState,
 }
 
@@ -103,22 +103,24 @@ impl Decoder for XMLDecoder {
     }
 }
 
+pub fn xml_decoder<R>(stream: R) -> FramedRead<R, XMLDecoder>
+where
+    R: AsyncRead + Unpin,
+{
+    FramedRead::new(stream, XMLDecoder::default())
+}
+
 impl XMLNode {
     /// Decodes a stream chunks by chunks until a complete XML node can be decoded.
-    pub async fn decode_stream<R>(stream: R) -> io::Result<Self>
+    pub async fn decode_stream<R>(reader: &mut FramedRead<R, XMLDecoder>) -> io::Result<Self>
     where
         R: AsyncRead + Unpin,
     {
-        let decoder = XMLDecoder::default();
-
-        FramedRead::new(stream, decoder)
-            .try_next()
-            .await
-            .and_then(|opt| {
-                opt.ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::BrokenPipe, "Cannot fetch next XML node")
-                })
+        reader.try_next().await.and_then(|opt| {
+            opt.ok_or_else(|| {
+                io::Error::new(io::ErrorKind::BrokenPipe, "Cannot fetch next XML node")
             })
+        })
     }
 
     /// Retrieves all the raw text inside a node.

@@ -169,12 +169,39 @@ impl IdeSlave {
                 })?;
 
                 self.refresh_processed(coq_state).await?;
-
-                // TODO: refresh goals
             }
             ProtocolResult::Good(Optional(Some(box Pair(box List(_), box _)))) => {
                 log::warn!("Unhandled response {:?}", resp);
                 // TODO: output hints in all option/pair/list/pair/string/::text
+            }
+            // No goal has been found
+            ProtocolResult::Good(Optional(None)) => {
+                self.output_to_goals("No goals.".to_string()).await?;
+                self.send_command(String::new()).await?;
+            }
+            // Some goals found
+            ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, gg)))) => {
+                if fg.is_empty() {
+                    if bg.is_empty() {
+                        self.output_to_goals("No more subgoals.".to_string())
+                            .await?;
+                    } else {
+                        let msg =
+                            "The current subgoal is complete, but there are unfinished subgoals:"
+                                .to_string();
+
+                        log::debug!("{:?}", bg);
+                        self.output_to_goals(msg).await?;
+                    }
+                } else {
+                    let msg = format!("{} subgoal(s) remaining:\n", fg.len());
+                    let msg = fg.into_iter().fold(msg, |msg, goal| {
+                        format!("{}\n{}", msg, goal_to_string(goal))
+                    });
+                    self.output_to_goals(msg).await?;
+                }
+
+                self.send_command(String::new()).await?;
             }
             // Any other good result only refreshes the processed range
             ProtocolResult::Good(_) => {
@@ -226,6 +253,13 @@ impl IdeSlave {
         self.result_file.write_all(msg.as_bytes()).await
     }
 
+    /// Writes a message to the goal buffer, overwriting everything that was previously in it.
+    async fn output_to_goals(&mut self, msg: String) -> io::Result<()> {
+        self.goal_file.set_len(0).await?;
+        self.goal_file.seek(SeekFrom::Start(0)).await?;
+        self.goal_file.write_all(msg.as_bytes()).await
+    }
+
     /// Sends a command through the command channel to Kakoune.
     async fn send_command(&self, cmd: String) -> io::Result<()> {
         self.cmd_tx
@@ -259,6 +293,27 @@ impl IdeSlave {
         self.coqidetop.kill().await?;
 
         Ok(())
+    }
+}
+
+fn goal_to_string(goal: ProtocolValue) -> String {
+    match goal {
+        ProtocolValue::Goal(_, hyps, ccl) => {
+            let mut output = String::new();
+            for ProtocolRichPP::Raw(hyp) in hyps {
+                output += hyp.as_str();
+                output += "\n";
+            }
+            output += "────────────────────────────────────────────────────\n";
+            match ccl {
+                ProtocolRichPP::Raw(ccl) => {
+                    output += ccl.as_str();
+                    output += "\n";
+                }
+            }
+            output
+        }
+        _ => String::new(),
     }
 }
 

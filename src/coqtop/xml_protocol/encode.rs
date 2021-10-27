@@ -1,9 +1,11 @@
-use super::types::ProtocolCall::{self, *};
-use super::types::ProtocolValue::{self, *};
+use super::types::ProtocolCall;
+use super::types::ProtocolValue;
 
 impl ProtocolValue {
     /// Encode a protocol value as XML to be sent to the `coqidetop` process.
     pub fn encode(self) -> String {
+        use ProtocolValue::*;
+      
         match self {
             Unit => "<unit/>".to_string(),
             List(vs) => format!(
@@ -30,6 +32,9 @@ impl ProtocolValue {
                 pa.encode(),
                 nb.encode()
             ),
+            // We should never have to encode a goal, only decode them.
+            Goals(_, _, _, _) => unreachable!(),
+            Goal(_, _, _) => unreachable!(),
             Unknown(_) => format!(""),
         }
     }
@@ -52,16 +57,18 @@ fn escape(str: String) -> String {
 impl ProtocolCall {
     /// Encode a protocol call as XML to be sent to the `coqidetop` process.
     pub fn encode(self) -> String {
+        use ProtocolCall::*;
+      
         match self {
             Init(val) => format!("<call val=\"Init\">{}</call>", val.encode()),
             EditAt(state_id) => format!(
                 "<call val=\"Edit_at\">{}</call>",
-                StateId(state_id).encode()
+                ProtocolValue::StateId(state_id).encode()
             ),
-            Quit => format!("<call val=\"Quit\">{}</call>", Unit.encode()),
+            Quit => format!("<call val=\"Quit\">{}</call>", ProtocolValue::Unit.encode()),
             Query(val) => format!("<call val=\"Query\">{}</call>", val.encode()),
-            Goal => format!("<call val=\"Goal\">{}</call>", Unit.encode()),
-            Hints => format!("<call val=\"Hints\">{}</call>", Unit.encode()),
+            Goal => format!("<call val=\"Goal\">{}</call>", ProtocolValue::Unit.encode()),
+            Hints => format!("<call val=\"Hints\">{}</call>", ProtocolValue::Unit.encode()),
             Add(code, state_id) => format!(
                 "<call val=\"Add\">{}</call>",
                 ProtocolValue::Pair(

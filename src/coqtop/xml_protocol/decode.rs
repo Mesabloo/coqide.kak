@@ -1,9 +1,12 @@
-use super::{parser::{XMLDecoder, XMLNode}, types::{
+use super::{
+    parser::{XMLDecoder, XMLNode},
+    types::{
         FeedbackContent,
         ProtocolResult::{self, *},
         ProtocolRichPP::{self, *},
         ProtocolValue::{self, *},
-    }};
+    },
+};
 use std::io;
 use tokio::io::AsyncRead;
 
@@ -21,10 +24,12 @@ pub enum DecodeError {
     InvalidStateId,
     InvalidFeedback,
     InvalidFeedbackContent,
+    InvalidGoals,
+    InvalidGoal,
 }
 
-use DecodeError::*;
 use tokio_util::codec::FramedRead;
+use DecodeError::*;
 
 impl std::fmt::Debug for DecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -42,6 +47,8 @@ impl std::fmt::Debug for DecodeError {
             InvalidStateId => write!(f, "Invalid <state_id/> tag"),
             InvalidFeedback => write!(f, "Invalid <feedback/> tag"),
             InvalidFeedbackContent => write!(f, "Invalid <feedback_content/> tag"),
+            InvalidGoals => write!(f, "Invalid <goals/> tag"),
+            InvalidGoal => write!(f, "Invalid <goal> tag"),
         }
     }
 }
@@ -173,6 +180,88 @@ impl ProtocolValue {
                     Box::new(children.remove(0)),
                     Box::new(children.remove(0)),
                 ))
+            }
+            "goals" => {
+                assert_decode_error(xml.children.len() == 4, || InvalidGoals)?;
+                let fg =
+                    ProtocolValue::decode(xml.children[0].clone().as_node().cloned().unwrap())?;
+                // <list> of <goal>s
+                let bg =
+                    ProtocolValue::decode(xml.children[1].clone().as_node().cloned().unwrap())?;
+                // <list> of <pair>s of <list>s of <goal>s
+                let sg =
+                    ProtocolValue::decode(xml.children[2].clone().as_node().cloned().unwrap())?;
+                // <list> of <goal>s
+                let gg =
+                    ProtocolValue::decode(xml.children[2].clone().as_node().cloned().unwrap())?;
+                // <list> of <goal>s
+
+                let fg = match fg {
+                    List(vs) => Ok(vs),
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("{:?}", InvalidGoals),
+                    )),
+                }?;
+                let bg = match bg {
+                    List(vs) => Ok(vs
+                        .into_iter()
+                        .filter_map(|v| match v {
+                            Pair(box v1, box v2) => {
+                                let v1 = match v1 {
+                                    List(vs) => Some(vs),
+                                    _ => None,
+                                }?;
+                                let v2 = match v2 {
+                                    List(vs) => Some(vs),
+                                    _ => None,
+                                }?;
+                                Some((v1, v2))
+                            }
+                            _ => None,
+                        })
+                        .collect()),
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("{:?}", InvalidGoals),
+                    )),
+                }?;
+                let sg = match sg {
+                    List(vs) => Ok(vs),
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("{:?}", InvalidGoals),
+                    )),
+                }?;
+                let gg = match gg {
+                    List(vs) => Ok(vs),
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("{:?}", InvalidGoals),
+                    )),
+                }?;
+
+                Ok(Goals(fg, bg, sg, gg))
+            }
+            "goal" => {
+                assert_decode_error(xml.children.len() == 3, || InvalidGoal)?;
+
+                let name =
+                    ProtocolValue::decode(xml.children[0].clone().as_node().cloned().unwrap())?;
+                let hyps = {
+                    let node = xml.children[1].as_node().cloned().unwrap();
+                    match node.name.as_str() {
+                        "list" => node
+                            .children
+                            .into_iter()
+                            .filter_map(|child| ProtocolRichPP::decode(child.as_node().cloned().unwrap()).ok())
+                            .collect(),
+                        _ => Vec::new(),
+                    }
+                };
+                let ccl = ProtocolRichPP::decode(xml.children[2].as_node().cloned().unwrap())?;
+
+                Ok(Goal(Box::new(name), hyps, ccl))
             }
             _ => Ok(Unknown(xml)),
         }
@@ -344,7 +433,7 @@ impl FeedbackContent {
 
                 Ok(FeedbackContent::Processing(
                     xml.children[0].as_node().cloned().unwrap(),
-                )) 
+                ))
             }
             _ => unreachable!(),
         }

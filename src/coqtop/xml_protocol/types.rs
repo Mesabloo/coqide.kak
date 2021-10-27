@@ -1,5 +1,9 @@
 use super::parser::XMLNode;
 
+/*
+Protocol documentation: https://github.com/coq/coq/blob/master/ide/coqide/protocol/interface.ml
+ */
+
 #[derive(Debug, Clone)]
 pub enum ProtocolValue {
     /// `<unit/>` which holds no value
@@ -32,6 +36,38 @@ pub enum ProtocolValue {
         Box<ProtocolValue>,
         Box<ProtocolValue>,
         Box<ProtocolValue>,
+    ),
+
+    /// `<goals>'fg''bg''sg''gg'</goals>`
+    ///
+    /// - `fg`: focused goals
+    /// - `bg`: unfocused (background) goals
+    /// - `sg`: shelved (pending) goals
+    /// - `gg`: given up goals
+    Goals(
+        /// The list of focused goals.
+        Vec<ProtocolValue>,
+        /// The list of unfocused (background) goals.
+        Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
+        /// The list of all pending proofs.
+        Vec<ProtocolValue>,
+        /// The list of proofs which have been given up.
+        Vec<ProtocolValue>,
+    ),
+
+    /// `<goal>'name''hyp''ccl''user-name'</goal>`
+    ///
+    /// - `name`: a `<string>` containing a unique identifier
+    /// - `hyp`: a `<list>` of [`ProtocolRichPP`] seen as the hypotheses of the goal
+    /// - `ccl`: a [`ProtocolRichPP`] representing the conclusion of the goal
+    /// - `user-name`: an [`ProtocolValue::Optional`] `<string>` for a user-given name
+    Goal(
+        /// The name of the goal.
+        Box<ProtocolValue>,
+        /// A list of hypotheses.
+        Vec<ProtocolRichPP>,
+        /// The conclusion of the goal.
+        ProtocolRichPP,
     ),
 
     /// An unknown value has been decoded

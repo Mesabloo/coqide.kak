@@ -135,7 +135,8 @@ impl CommandProcessor {
             Ok(coq_state.get_current_state_id())
         })?;
 
-        self.send(ProtocolCall::EditAt(state_id)).await
+        self.send(ProtocolCall::EditAt(state_id)).await?;
+        self.send(ProtocolCall::Goal).await
     }
 
     /// Process a [`Command::Next`] by pushing the new code range to the daemon state, and sending a [`ProtocolCall::Add`].
@@ -151,7 +152,8 @@ impl CommandProcessor {
             Ok(sid)
         })?;
 
-        self.send(ProtocolCall::Add(code, state_id)).await
+        self.send(ProtocolCall::Add(code, state_id)).await?;
+        self.send(ProtocolCall::Goal).await
     }
 
     /// Process a [`Command::Query`] by sending the query string along with the current state ID inside a [`ProtocolCall::Query`].
@@ -185,7 +187,8 @@ impl CommandProcessor {
             Ok(coq_state.backtrack_one_state())
         })?;
 
-        self.send(ProtocolCall::EditAt(state_id)).await
+        self.send(ProtocolCall::EditAt(state_id)).await?;
+        self.send(ProtocolCall::Goal).await
     }
 
     /// Process a [`Command::MoveTo`] by sending [`ProtocolCall::Add`]s for each individual piece of code.
@@ -210,6 +213,7 @@ impl CommandProcessor {
                 Ok(())
             })?;
             self.send(ProtocolCall::Add(code, state_id)).await?;
+            self.send(ProtocolCall::Goal).await?;
             state_id += 1;
         }
 

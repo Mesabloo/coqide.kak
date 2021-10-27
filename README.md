@@ -1,11 +1,13 @@
 This plugin aims at providing a functional and usable `coqidetop` wrapper for use with Kakoune.
 
-**Disclaimer:** While this plugin somehow works sometimes, it is definitely hard to test it.
+**:warning: Disclaimer:** While this plugin somehow works sometimes, it is definitely hard to test it.
 The goal was to create a correct wrapper for using Coq in Kakoune, and it has been realized.
 However, working with an undocumented protocol (yes, the XML protocol of `coqidetop` is undocumented for the most part; I had to check
 in other plugins such as Coqoune or VSCoq to understand some queries) as well as a heavily asynchronous codebase is very hard, and I do
 not feel like I'll be really maintaining this plugin in the future.
 This was more like a Proof of Concept than a real usable product (it is usable! But be aware that bugs will happen).
+
+For a list of things left to do, see the end of this README.
 
 -----------------
 
@@ -59,6 +61,22 @@ This plugin comes with several default options, but some of them can be altered:
 - `coqide_command` is the command used to launch the daemon (which is written in Rust).
   Sometimes, the executable is not in your PATH, so you may want to customize this option using `set-option global coqide_command "<path to coqide-daemon>"`.
   The default value is `coqide-daemon` therefore assumes it is in your PATH.
+
+## Things left to do and known bugs
+
+The codebase is at some locations pretty ugly (e.g. when decoding XML nodes to Rust values).
+However, most of it should be at last a little bit documented.
+
+Here are some erroneous or incomplete features:
+- Both goal and result buffers print unformatted raw text.
+  This means that text like `<constr.keyword>forall</constr.keyword>` will be output, instead of a colored one.
+  This makes output pretty hard to read.
+- Trying to process the next statement after the end of the file yields a `coqidetop` error instead of simply be ignored.
+- Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
+- ... and some other things that I did not see.
+
+If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.
+Just try not to implement many features in the same pull request.
 
 ## Personal configuration
 

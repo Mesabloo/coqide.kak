@@ -32,71 +32,6 @@ plug "mesabloo/coqide.kak" do %{
 }
 ```
 
-------------------------------
-
-My personal configuration is:
-```sh
-declare-option -hidden str coqide_close_panels
-
-# Create two additional clients to show goals and results
-hook global BufCreate \*coqide-(.*)-(goal|result)\* %{
-  nop %sh{
-    switch_to_buffer="
-      buffer $kak_hook_param_capture_0
-      rename-client coq-${kak_hook_param_capture_1}-${kak_hook_param_capture_2}
-
-      try %{
-        remove-highlighter buffer/line_numbers
-        remove-highlighter buffer/matching
-        remove-highlighter buffer/wrap_lines
-        remove-highlighter buffer/show-whitespaces
-      }
-    "
-    ${kak_opt_termcmd} "kak -c $kak_session -e '$switch_to_buffer'" &>/dev/null </dev/null &
-  }
-}
-
-
-hook global WinSetOption filetype=coq %{ 
-  coqide-start
-
-  # User mode to interact with CoqIDE only in Coq files
-  try %{
-    declare-user-mode coq
-    map buffer user c ": enter-user-mode coq<ret>" \
-      -docstring "enter the Coq user mode"
-    map buffer coq c ": enter-user-mode -lock coq<ret>" \
-      -docstring "stay in the Coq user mode"
-    map buffer coq k ": coqide-previous<ret>" \
-      -docstring "unprove the last statement"
-    map buffer coq j ": coqide-next<ret>" \
-      -docstring "prove the next statement"
-    map buffer coq <ret> ": coqide-move-to<ret>" \
-      -docstring "move tip to main cursor"
-    map buffer coq l ": coqide-dump-log<ret>" \
-      -docstring "dump logs"
-    map buffer coq q ": coqide-query<ret>" \
-      -docstring "send a query to coqtop"
-  }
-
-  # Better looking face
-  set-face global coqide_processed default,black+id
-
-  # Commands to execute when the buffer is closed.
-  # These are declared here as a string in order to have the value of `%opt{coqide_pid}`
-  # (which is an internal option)
-  set-option buffer coqide_close_panels "
-    evaluate-commands -client coq-%opt{coqide_pid}-goal 'quit!'
-    evaluate-commands -client coq-%opt{coqide_pid}-result 'quit!'
-    remove-hooks coqide-%opt{coqide_pid}
-  "
-
-  # Remove the side panels when closing the buffer
-  hook global -group "coqide-%opt{coqide_pid}" BufClose "%val{buffile}" %{ try %opt{coqide_close_panels} }
-  hook global -group "coqide-%opt{coqide_pid}" ClientClose .* %{ try %opt{coqide_close_panels} }
-}
-```
-
 ## Public API
 
 - `coqide-start` starts the daemon in the current buffer.
@@ -124,3 +59,81 @@ This plugin comes with several default options, but some of them can be altered:
 - `coqide_command` is the command used to launch the daemon (which is written in Rust).
   Sometimes, the executable is not in your PATH, so you may want to customize this option using `set-option global coqide_command "<path to coqide-daemon>"`.
   The default value is `coqide-daemon` therefore assumes it is in your PATH.
+
+## Personal configuration
+
+As I intend to use this plugin, here is how I configured it.
+It spawns two new kakoune clients containing the result and goal buffers and deletes them when they get discarded.
+
+```sh
+plug "coqide.kak" do %{
+  cargo build --release --locked
+  cargo install --force --path . --root ~/.local
+} config %{
+  declare-option -hidden str coqide_close_panels
+
+  declare-user-mode coq
+  map global coq c ": enter-user-mode -lock coq<ret>" \
+    -docstring "stay in the Coq user mode"
+  map global coq k ": coqide-previous<ret>" \
+    -docstring "unprove the last statement"
+  map global coq j ": coqide-next<ret>" \
+    -docstring "prove the next statement"
+  map global coq <ret> ": coqide-move-to<ret>" \
+    -docstring "move tip to main cursor"
+  map global coq l ": coqide-dump-log<ret>" \
+    -docstring "dump logs"
+  map global coq q ": coqide-query<ret>" \
+    -docstring "send a query to coqtop"
+
+  # Create two additional clients to show goals and results
+  hook global BufCreate \*coqide-(.*)-(goal|result)\* %{
+    evaluate-commands %sh{
+      client_name="coq-${kak_hook_param_capture_1}-${kak_hook_param_capture_2}"
+      regex_safe="$(sed 's/\*/\\*/g' <<< "$kak_hook_param_capture_0")"
+
+      switch_to_buffer="
+        buffer $kak_hook_param_capture_0
+        rename-client $client_name
+
+        try %{
+          remove-highlighter buffer/line_numbers
+          remove-highlighter buffer/matching
+          remove-highlighter buffer/wrap_lines
+          remove-highlighter buffer/show-whitespaces
+        }
+      "
+      ${kak_opt_termcmd} "kak -c $kak_session -e '$switch_to_buffer'" &>/dev/null </dev/null &
+
+      echo "hook -once global BufClose '$regex_safe' %{
+        evaluate-commands -client '$client_name' 'quit!'
+      }"
+    }
+  }
+
+
+  hook global WinSetOption filetype=coq %{ 
+    coqide-start
+
+    # User mode to interact with CoqIDE only in Coq files
+    map buffer user c ": enter-user-mode coq<ret>" \
+      -docstring "enter the Coq user mode"
+
+    # Better looking face
+    set-face global coqide_processed default,black+id
+
+    # Commands to execute when the buffer is closed.
+    # These are declared here as a string in order to have the value of `%opt{coqide_pid}`
+    # (which is an internal option)
+    set-option buffer coqide_close_panels "
+      evaluate-commands -client coq-%opt{coqide_pid}-goal 'quit!'
+      evaluate-commands -client coq-%opt{coqide_pid}-result 'quit!'
+      remove-hooks coqide-%opt{coqide_pid}
+    "
+
+    # Remove the side panels when closing the buffer
+    hook global -group "coqide-%opt{coqide_pid}" BufClose "%val{buffile}" %{ try %opt{coqide_close_panels} }
+    hook global -group "coqide-%opt{coqide_pid}" ClientClose .* %{ try %opt{coqide_close_panels} }
+  }
+}
+```

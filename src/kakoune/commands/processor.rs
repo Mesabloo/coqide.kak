@@ -141,6 +141,13 @@ impl CommandProcessor {
 
     /// Process a [`Command::Next`] by pushing the new code range to the daemon state, and sending a [`ProtocolCall::Add`].
     async fn process_next(&mut self, range: CodeSpan, code: String) -> io::Result<()> {
+        // processing an empty code range yields an error in `coqidetop`
+        // therefore we simply skip those (even when no error is raised, processing
+        // nothing adds nothing to the current range)
+        if code.is_empty() {
+            return Ok(())
+        }
+      
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
                 .coq_state

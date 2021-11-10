@@ -19,6 +19,7 @@ I chose to write the “backend” in Rust, mainly to discover, and because I fe
 
 ## Dependencies
 
+- coqidetop (should come with a Coq installation by default)
 - [socat](https://linux.die.net/man/1/socat)
 - Python 3.8+
 

@@ -72,7 +72,6 @@ Here are some erroneous or incomplete features:
 - Both goal and result buffers print unformatted raw text.
   This means that text like `<constr.keyword>forall</constr.keyword>` will be output, instead of a colored one.
   This makes output pretty hard to read.
-- Trying to process the next statement after the end of the file yields a `coqidetop` error instead of simply be ignored.
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - ... and some other things that I did not see.
 

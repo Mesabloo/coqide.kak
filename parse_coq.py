@@ -79,7 +79,7 @@ def yield_position():
 
 # Iterate through all the characters from stdin
 for char in lazy_read_stdin():
-#  print(f'{state_line}:{state_column} {char}: [{" ".join(map(str, states))}]', file=sys.stderr)
+  print(f'{at_beginning_of_coq_line} - {state_line}:{state_column} {char}: [{" ".join(map(str, states))}]', file=sys.stderr)
   
   last_known_state = states[-1] if len(states) > 0 else None
   
@@ -158,6 +158,10 @@ for char in lazy_read_stdin():
   # (we may have written `something. (*  *) - something_else`, in which case the `-` is at the beginning
   # of the statement)
   if char == ')' and last_known_state in [STATE_END_COMMENT, STATE_COMMENT]:
+    pass
+  # If we encounter a newline, do not change the beginning_of_line state
+  # because we may be at the beginning of a coq statement, or in the middle.
+  elif char == '\n':
     pass
   # When character is not a end of statement or a space, we are not at the beginning
   # of a coq statement anymore

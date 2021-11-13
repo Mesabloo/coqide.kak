@@ -1,7 +1,7 @@
 use std::io::SeekFrom;
 
 use tokio::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{self, AsyncSeekExt, AsyncWriteExt},
     sync::{mpsc, watch},
 };
@@ -100,7 +100,7 @@ impl KakSlave {
     async fn output_result(&self, richpp: ProtocolRichPP) -> io::Result<()> {
         let (message, colors) = tokio::task::block_in_place(|| extract_colors(richpp, 1));
 
-        overwrite_file(&self.kak_result, message).await?;
+        overwrite_file(&self.kak_result, message, false).await?;
 
         kak(
             &self.kak_session,
@@ -132,7 +132,8 @@ impl KakSlave {
             if bg.is_empty() {
                 message = "No more subgoals.".to_string();
             } else {
-                message = "The current subgoal is complete, but there are unfinished subgoals:\n".to_string();
+                message = "The current subgoal is complete, but there are unfinished subgoals:\n"
+                    .to_string();
                 let mut line = 3usize;
                 for (first, last) in bg.into_iter() {
                     for goal in first.into_iter().chain(last.into_iter()) {
@@ -142,7 +143,7 @@ impl KakSlave {
                         colors.append(&mut cols);
                         line = i + 1;
                     }
-                }                
+                }
             }
         } else {
             message = format!("{} subgoal(s) remaining:\n", fg.len());
@@ -156,7 +157,7 @@ impl KakSlave {
             }
         }
 
-        overwrite_file(&self.kak_goal, message).await?;
+        overwrite_file(&self.kak_goal, message, true).await?;
 
         kak(
             &self.kak_session,
@@ -205,7 +206,7 @@ fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>,
             line += 1;
             format!("{}\n{}", middle_line, msg)
         } else {
-            line += 2; 
+            line += 2;
             format!("{}\n{}\n{}\n", message, middle_line, msg)
         };
         colors.append(&mut cols);
@@ -289,12 +290,26 @@ fn color_name(part: &ProtocolRichPPPart) -> String {
     .to_string()
 }
 
-/// Overwrite (or create) the file at the given path with the given content.
-async fn overwrite_file(path: &String, content: String) -> io::Result<()> {
-    let mut file = File::create(path).await?;
+/// Empty the file at the given path if the content is empty, else append the content at the end.
+async fn overwrite_file(path: &String, content: String, must_overwrite: bool) -> io::Result<()> {
+    let mut file = if content.is_empty() || must_overwrite {
+        File::create(path).await?
+    } else {
+        OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .await?
+    };
 
     // file.set_len(0).await?;
     // file.seek(SeekFrom::Start(0)).await?;
-    file.write_all(content.as_bytes()).await?;
+    let cnt = format!("{}\n", content);
+    file.write_all(if content.is_empty() {
+        &[]
+    } else {
+        cnt.as_bytes()
+    })
+    .await?;
     file.flush().await
 }

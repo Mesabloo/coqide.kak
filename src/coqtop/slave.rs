@@ -1,14 +1,11 @@
-use std::{
-    io::{self, SeekFrom},
-    sync::{Arc, Mutex},
-};
+use std::{io::{self, SeekFrom}, process::Stdio, sync::{Arc, Mutex}};
 
 use tokio::{
     fs::File,
     io::{AsyncSeekExt, AsyncWriteExt},
     join,
     net::{TcpListener, TcpStream},
-    process::{Child, Command},
+    process::{Child, ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
 };
 use tokio_util::codec::FramedRead;
@@ -36,7 +33,10 @@ pub struct IdeSlave {
     /// The main channel to send commands (calls, see [`ProtocolCall`]) to [`COQTOP`].
     ///
     /// [`ProtocolCall`]: crate::coqtop::xml_protocol::types::ProtocolCall
-    main_w: TcpStream,
+    //main_w: TcpStream,
+    //main_r: ChildStdout,
+    main_w: ChildStdin,
+
     /// The [`COQTOP`] process itself.
     coqidetop: Child,
     /// The receiving end of a channel used to transmit protocol calls to send to [`COQTOP`].
@@ -48,7 +48,7 @@ pub struct IdeSlave {
     /// The file where goals are written.
     goal_file: File,
 
-    reader: FramedRead<TcpStream, XMLDecoder>,
+    reader: FramedRead<ChildStdout, XMLDecoder>,
 }
 
 impl IdeSlave {
@@ -59,24 +59,26 @@ impl IdeSlave {
         tmp_dir: &String,
         topfile: String,
     ) -> io::Result<Self> {
-        let (main_w_listen, main_w_port) = create_listener().await?;
-        let (main_r_listen, main_r_port) = create_listener().await?;
+        //let (main_w_listen, main_w_port) = create_listener().await?;
+        //let (main_r_listen, main_r_port) = create_listener().await?;
 
         // NOTE: `async { X.await }` can also be written `X`. However, I find it less clear when types
         // are not inlined in my code (which rust-analyzer is able to do).
         // Please do not refactor this...
-        let main_r = async { main_r_listen.accept().await };
-        let main_w = async { main_w_listen.accept().await };
+        //let main_r = async { main_r_listen.accept().await };
+        //let main_w = async { main_w_listen.accept().await };
 
-        let ports = [main_r_port, main_w_port];
+        //let ports = [main_r_port, main_w_port];
         let flags = [/*"-async-proofs", "on",*/ "-topfile", &topfile];
 
-        let coqidetop = async { coqidetop(tmp_dir, ports, flags).await };
+        let mut coqidetop = coqidetop(tmp_dir, /*ports,*/ flags).await?;
+        let main_w = coqidetop.stdin.take().unwrap();
+        let main_r = coqidetop.stdout.take().unwrap();
 
-        let (main_r, main_w, coqidetop) = join!(main_r, main_w, coqidetop);
+        //let (main_r, main_w, coqidetop) = join!(main_r, main_w, coqidetop);
         // NOTE: because we are using TCP streams, we don't care about the second parameter returned by [`TcpListener::accept`]
         // hence all the `.0`s.
-        let (main_r, main_w, coqidetop) = (main_r?.0, main_w?.0, coqidetop?);
+        //let (main_r, main_w, coqidetop) = (main_r?.0, main_w?.0, coqidetop?);
 
         log::info!(
             "{} (process {}) is up and running!",
@@ -305,14 +307,17 @@ async fn create_listener() -> io::Result<(TcpListener, u16)> {
 /// (e.g. `["-topfile", file]`).
 async fn coqidetop<const N: usize>(
     tmp_dir: &String,
-    ports: [u16; 2],
+    //ports: [u16; 2],
     flags: [&str; N],
 ) -> io::Result<Child> {
     Command::new(COQTOP)
         .arg("-main-channel")
-        .arg(format!("127.0.0.1:{}:{}", ports[0], ports[1]))
+        .arg("stdfds")
+        //.arg(format!("127.0.0.1:{}:{}", ports[0], ports[1]))
         .args(flags)
-        .stdout(std::fs::File::create(logger::log_file(&tmp_dir))?)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        //.stdout(std::fs::File::create(logger::log_file(&tmp_dir))?)
         .kill_on_drop(true)
         .spawn()
 }

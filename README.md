@@ -1,5 +1,7 @@
 This plugin aims at providing a functional and usable `coqidetop` wrapper for use with Kakoune.
 
+![demo screenshot](./assets/demo1.png)
+
 For a list of things left to do, see the end of this README.
 
 -----------------

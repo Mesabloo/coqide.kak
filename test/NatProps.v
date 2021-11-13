@@ -31,6 +31,7 @@ Proof. intros n. reflexivity. Qed.
 Theorem plus_id_example : forall n m : nat, n = m -> n + n = m + m.
 Proof. intros n m. intros H. rewrite -> H. reflexivity. Qed.
 
+
 Theorem plus_1_neq_0_firsttry : forall n : nat, ((n + 1) =? 0) = false.
 Proof.
   intros n.

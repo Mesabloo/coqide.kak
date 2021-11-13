@@ -360,9 +360,7 @@ impl ProtocolResult {
         R: AsyncRead + Unpin,
     {
         tokio::select! {
-            Ok(elem) = XMLNode::decode_stream(reader) => {
-                ProtocolResult::decode(elem)
-            }
+            Ok(elem) = XMLNode::decode_stream(reader) => ProtocolResult::decode(elem),
             else => Err(io::Error::new(io::ErrorKind::BrokenPipe, "Cannot decode XML node")),
         }
     }

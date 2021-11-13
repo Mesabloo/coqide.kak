@@ -116,11 +116,10 @@ impl XMLNode {
     where
         R: AsyncRead + Unpin,
     {
-        reader.try_next().await.and_then(|opt| {
-            opt.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::BrokenPipe, "Cannot fetch next XML node")
-            })
-        })
+        tokio::select! {
+            Some(xml) = reader.next() => xml,
+            else => Err(io::Error::new(io::ErrorKind::BrokenPipe, "Broken pipe")),
+        }
     }
 
     /// Retrieves all the raw text inside a node.
@@ -183,16 +182,13 @@ parser! {
                 parse_slash_end().map(|cs| (cs, String::new())),
             )),
         ))
-        .flat_map(|(_, n1, _, attrs, _, (children, n2))|
-          if n2.is_empty() || n1 == n2 {
-              Ok(XMLNode {
-                  name: n1,
-                  attributes: HashMap::from_iter(attrs.into_iter()),
-                  children
-              })
-          } else {
-              todo!()
-          }
+        .map(|(_, n1, _, attrs, _, (children, _))|
+            // hoping that the node is properly closed with a closing tag with the same name
+            XMLNode {
+                name: n1,
+                attributes: HashMap::from_iter(attrs.into_iter()),
+                children
+            }
         )
     }
 }

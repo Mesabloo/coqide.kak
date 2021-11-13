@@ -82,8 +82,7 @@ Here are some erroneous or incomplete features:
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
 - `coqidetop` sometimes gets randomly stuck on statements.
-- The internal command pipe seems to be randomly dropped, preventing further messages to be sent (a call to `echo` hangs forever).
-- The “parser” does not correctly recognize bullets.
+- The `FramedRead` used to internally read `coqidetop`'s stdout randomly gets stuck, preventing further decoding of XML nodes (stream refused to go forward more).
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

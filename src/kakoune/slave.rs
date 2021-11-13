@@ -206,7 +206,7 @@ fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>,
             format!("{}\n{}", middle_line, msg)
         } else {
             line += 2; 
-            format!("{}\n{}\n{}", message, middle_line, msg)
+            format!("{}\n{}\n{}\n", message, middle_line, msg)
         };
         colors.append(&mut cols);
 

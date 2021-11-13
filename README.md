@@ -81,6 +81,7 @@ Here are some erroneous or incomplete features:
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
 - `coqidetop` sometimes gets stuck on statements of the form `intros H.` for some reason (might be random).
 - The internal command pipe seems to be randomly dropped, preventing further messages to be sent (a call to `echo` hangs forever).
+- The “parser” does not correctly recognize bullets.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

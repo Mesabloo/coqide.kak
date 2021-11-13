@@ -80,6 +80,10 @@ However, most of it should be at last a little bit documented.
 
 Here are some erroneous or incomplete features:
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
+- Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
+  A workaround is simply to go back 2-3 states and retry processing.
+
+  This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
 - `coqidetop` sometimes gets randomly stuck on statements.
 - The `FramedRead` used to internally read `coqidetop`'s stdout randomly gets stuck, preventing further decoding of XML nodes (stream refused to go forward more).

@@ -243,7 +243,7 @@ parser! {
             byte::byte(b'"'),
             from_str(repeat_until::<Vec<_>, _, _, _>(
                 choice((attempt(escaped()), token::any())),
-                byte::byte(b'"'),
+                attempt(byte::byte(b'"')),
             )),
             byte::byte(b'"'),
         )).map(|(_, str, _)| str)

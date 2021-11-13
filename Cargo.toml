@@ -12,7 +12,7 @@ exitcode = "1.1.2"
 log = "0.4.14"
 log4rs = "1.0.0"
 unix-named-pipe = "0.2.0"
-combine = { git = "https://github.com/mesabloo/combine" , features = ["tokio"] }
+combine = { version = "4.6.2" , features = ["tokio"] }
 bytes = "1.*"
 tokio-util = { version = "0.6", features = ["codec"] }
 tokio = { version = "1.12.0", features = ["net", "fs", "io-util", "process", "rt", "macros", "rt-multi-thread", "sync"] }

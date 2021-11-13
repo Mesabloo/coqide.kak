@@ -81,7 +81,7 @@ However, most of it should be at last a little bit documented.
 Here are some erroneous or incomplete features:
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
-- `coqidetop` sometimes gets stuck on statements of the form `intros H.` for some reason (might be random).
+- `coqidetop` sometimes gets randomly stuck on statements.
 - The internal command pipe seems to be randomly dropped, preventing further messages to be sent (a call to `echo` hangs forever).
 - The “parser” does not correctly recognize bullets.
 - ... and some other things that I did not see.

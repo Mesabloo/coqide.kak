@@ -10,7 +10,10 @@ use tokio::{
 };
 
 use crate::{
-    coqtop::xml_protocol::types::{ProtocolCall, ProtocolValue},
+    coqtop::xml_protocol::types::{
+        ProtocolCall, ProtocolRichPP, ProtocolRichPPPart, ProtocolValue,
+    },
+    kakoune::types::DisplayCommand,
     state::{CodeSpan, CoqState},
 };
 
@@ -27,6 +30,8 @@ pub struct CommandProcessor {
     ///
     /// [`COQTOP`]: crate::coqtop::slave::COQTOP
     call_tx: mpsc::UnboundedSender<ProtocolCall>,
+    /// A producer whose sole purpose is to remove anything present in the result buffer.
+    cmd_tx: mpsc::UnboundedSender<DisplayCommand>,
     /// The current daemon state.
     coq_state: Arc<Mutex<CoqState>>,
     /// The file holding the current goals.
@@ -40,6 +45,7 @@ impl CommandProcessor {
     pub async fn new(
         pipe_rx: mpsc::UnboundedReceiver<Command>,
         call_tx: mpsc::UnboundedSender<ProtocolCall>,
+        cmd_tx: mpsc::UnboundedSender<DisplayCommand>,
         coq_state: Arc<Mutex<CoqState>>,
         goal_file: String,
         result_file: String,
@@ -50,6 +56,7 @@ impl CommandProcessor {
         Ok(Self {
             pipe_rx,
             call_tx,
+            cmd_tx,
             coq_state,
             goal_file,
             result_file,
@@ -89,6 +96,13 @@ impl CommandProcessor {
 
             Ok(())
         })?;
+
+        // remove any junk message left in the buffer
+        self.cmd_tx
+            .send(DisplayCommand::ColorResult(ProtocolRichPP::RichPP(vec![
+                ProtocolRichPPPart::Raw(String::new()),
+            ])))
+            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, format!("{:?}", err)))?;
 
         match cmd {
             Command::Init => self.process_init().await?,
@@ -145,9 +159,9 @@ impl CommandProcessor {
         // therefore we simply skip those (even when no error is raised, processing
         // nothing adds nothing to the current range)
         if code.is_empty() {
-            return Ok(())
+            return Ok(());
         }
-      
+
         let state_id = tokio::task::block_in_place(|| -> io::Result<i64> {
             let mut coq_state = self
                 .coq_state

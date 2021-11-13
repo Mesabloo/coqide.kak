@@ -14,7 +14,7 @@ use tokio::{
 use tokio_util::codec::FramedRead;
 
 use crate::{
-    coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP},
+    coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP, ProtocolRichPPPart},
     files::{goal_file, result_file},
     kakoune::types::DisplayCommand,
     logger,
@@ -218,6 +218,7 @@ impl IdeSlave {
                     coq_state.set_current_state_id(state_id);
                     Ok(())
                 })?;
+
                 self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Feedback(_, _, _, _) => {

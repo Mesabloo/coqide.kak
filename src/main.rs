@@ -84,6 +84,7 @@ async fn main() -> io::Result<()> {
     let mut kakoune_command_processor = CommandProcessor::new(
         pipe_rx,
         call_tx,
+        cmd_tx.clone(),
         coq_state.clone(),
         goal_file(&tmp_dir),
         result_file(&tmp_dir),

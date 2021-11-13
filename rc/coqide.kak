@@ -401,6 +401,8 @@ define-command -docstring "
 
   nop %sh{
     >&2 echo "Sending %§$1§"
+
+    exec 4<>"$kak_opt_coqide_pipe/cmd"
     echo "$1" >>"$kak_opt_coqide_pipe/cmd"
   }
 }

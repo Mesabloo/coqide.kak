@@ -50,11 +50,26 @@ Additional functionality:
 
 This plugin comes with several default options, but some of them can be altered:
 
-- `coqide_processed` is the `face` used to highlight Coq code which has already been processed by the daemon.
-  This can be customized as wanted using `set-face`, but comes with the default value `default,black`.
 - `coqide_command` is the command used to launch the daemon (which is written in Rust).
   Sometimes, the executable is not in your PATH, so you may want to customize this option using `set-option global coqide_command "<path to coqide-daemon>"`.
   The default value is `coqide-daemon` therefore assumes it is in your PATH.
+- **Colors:**
+  - `coqide_processed` is the `face` used to highlight Coq code which has already been processed by the daemon.
+    This can be customized as wanted using `set-face`, but comes with the default value `default,black`.
+  - `coqide_keyword` is the `face` used to color keywords in both goal and result buffers.
+    It defauls to the same face used to color `keyword`s.
+  - `coqide_evar` is used to highlight specific variables in the goal and result buffers.
+    Defaults to `variable` when not specified.
+  - `coqide_type` is the face which colors types in the goal and results buffers.
+    Defaults to the face `type` if unchanged.
+  - `coqide_notation` colors operators in both goal and result buffers.
+    Defaults to `operator` if left unspecified.
+  - `coqide_variable` is used to highlight variable names in the goal and result buffers.
+    Defaults to `variable` if unchanged.
+  - `coqide_reference` ???
+    Defaults to `documentation` because I'm quite unsure what this is used for.
+  - `coqide_path` ???
+    Defaults to `meta` for some reason.
 
 ## Things left to do and known bugs
 
@@ -67,6 +82,7 @@ Here are some erroneous or incomplete features:
   This makes output pretty hard to read.
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
+- `coqidetop` seems to get stuck on statements of the form `intros -> H.` for some reason.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

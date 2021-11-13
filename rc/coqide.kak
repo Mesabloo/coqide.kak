@@ -1,18 +1,34 @@
 # Interface:
 # - coqide_command:    the command used to launch the backend
-# - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
 # - coqide-start:      start the backend daemon and try to connect to it
 # - coqide-stop:       stop the daemon, give up on the processed state and remove logs
 # - coqide-dump-log:   dump the logs into a specific buffer
 # - coqide-next:       try to process the next Coq statement
 # - coqide-previous:   try to go back to the last processed state
 # - coqide-move-to:    move to the end of the next Coq statement (from the main cursor) and try to process until this point
+# ------- Colors
+# - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
+# - coqide_keyword:    how keywords are colored in goal/result buffers
+# - coqide_evar:       how evars are colored in goal/result buffers
+# - coqide_type:       how type are colored in goal/result buffers
+# - coqide_notation:   how operators are colored in goal/result buffers
+# - coqide_variable:   how variables are colored in goal/result buffers
+# - coqide_reference:  how reference are colored in goal/result buffers
+# - coqide_path:       how paths are colored in goal/result buffers
 
 declare-option -docstring "
   Command to launch `coqide-daemon`.
 " str coqide_command "coqide-daemon"
 
 set-face global coqide_processed default,black
+
+set-face global coqide_keyword @keyword
+set-face global coqide_evar @variable
+set-face global coqide_type @type
+set-face global coqide_notation @operator
+set-face global coqide_variable @variable
+set-face global coqide_reference @variable
+set-face global coqide_path @module
 
 ####################################################################################################
 
@@ -71,6 +87,14 @@ declare-option -docstring "
 
   To allow for concurrent daemons, it is formatted as `*coqide-%%pid-result*`.
 " -hidden str coqide_result_buffer
+
+declare-option -docstring "
+  Ranges to highlight in the result buffer. 
+" -hidden range-specs coqide_result_highlight
+
+declare-option -docstring "
+  Ranges to highlight in the goal buffer.
+" -hidden range-specs coqide_goal_highlight
 
 
 define-command -docstring "

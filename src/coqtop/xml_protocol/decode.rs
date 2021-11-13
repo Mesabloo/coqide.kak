@@ -4,6 +4,7 @@ use super::{
         FeedbackContent,
         ProtocolResult::{self, *},
         ProtocolRichPP::{self, *},
+        ProtocolRichPPPart,
         ProtocolValue::{self, *},
     },
 };
@@ -254,7 +255,9 @@ impl ProtocolValue {
                         "list" => node
                             .children
                             .into_iter()
-                            .filter_map(|child| ProtocolRichPP::decode(child.as_node().cloned().unwrap()).ok())
+                            .filter_map(|child| {
+                                ProtocolRichPP::decode(child.as_node().cloned().unwrap()).ok()
+                            })
                             .collect(),
                         _ => Vec::new(),
                     }
@@ -382,16 +385,32 @@ impl ProtocolRichPP {
             })?
             .clone();
 
-        for node in inner2.children {
-            if let Some(elem) = node.as_node() {
-                raw += format!("<{}>{}</{}>", elem.name, elem.get_text(), elem.name).as_str();
-            }
-            if let Some(txt) = node.raw() {
-                raw += txt;
-            }
-        }
+        let parts = inner2
+            .children
+            .into_iter()
+            .filter_map(|node| {
+                if let Some(txt) = node.raw() {
+                    Some(ProtocolRichPPPart::Raw(txt.clone()))
+                } else if let Some(elem) = node.as_node().cloned() {
+                    use ProtocolRichPPPart::*;
 
-        Ok(Raw(raw))
+                    match elem.name.as_str() {
+                        "constr.keyword" => elem.children[0].raw().cloned().map(Keyword),
+                        "constr.evar" => elem.children[0].raw().cloned().map(Evar),
+                        "constr.type" => elem.children[0].raw().cloned().map(Type),
+                        "constr.notation" => elem.children[0].raw().cloned().map(Notation),
+                        "constr.variable" => elem.children[0].raw().cloned().map(Variable),
+                        "constr.reference" => elem.children[0].raw().cloned().map(Reference),
+                        "constr.path" => elem.children[0].raw().cloned().map(Path),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(RichPP(parts))
     }
 }
 

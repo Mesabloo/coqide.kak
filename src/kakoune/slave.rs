@@ -1,17 +1,24 @@
+use std::io::SeekFrom;
+
 use tokio::{
-    io,
+    fs::File,
+    io::{self, AsyncSeekExt, AsyncWriteExt},
     sync::{mpsc, watch},
 };
 
 use crate::{
+    coqtop::xml_protocol::types::{ProtocolRichPP, ProtocolRichPPPart, ProtocolValue},
     files::{goal_file, result_file},
     kakoune::command_line::kak,
+    state::CodeSpan,
 };
+
+use super::types::DisplayCommand;
 
 /// A simple abstraction of Kakoune used to send commands to it.
 pub struct KakSlave {
     /// The receiving end of the channel used to send commands to be sent to Kakoune.
-    cmd_rx: mpsc::UnboundedReceiver<String>,
+    cmd_rx: mpsc::UnboundedReceiver<DisplayCommand>,
     /// The session identifier of the Kakoune session to connect to.
     kak_session: String,
     /// The path to the goal file output in the goal buffer.
@@ -28,7 +35,7 @@ impl KakSlave {
     /// The 4th argument is used to automatically deduce both goal and results files
     /// using [`goal_file`] and [`result_file`].
     pub fn new(
-        cmd_rx: mpsc::UnboundedReceiver<String>,
+        cmd_rx: mpsc::UnboundedReceiver<DisplayCommand>,
         kak_session: String,
         coq_file: String,
         tmp_dir: &String,
@@ -55,52 +62,239 @@ impl KakSlave {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok(()),
                 Some(cmd) = self.cmd_rx.recv() => {
-                    log::debug!("Sending command `{}` to Kakoune", cmd);
+                    log::debug!("Sending command `{:?}` to Kakoune", cmd);
 
-                    kak(&self.kak_session, format!(r#"evaluate-commands -buffer '{}' %{{ {} }}"#, self.coq_file, cmd)).await?;
-
-                    self.update_buffers().await?;
+                    self.process_command(cmd).await?;
                 }
             }
         }
     }
 
-    /// Updates both Kakoune buffers to reflect any changes of the current state.
-    async fn update_buffers(&self) -> io::Result<()> {
-        self.update_goal_buffer().await?;
-        self.update_result_buffer().await?;
-        Ok(())
+    /// Process a [`DisplayCommand`] and send it to Kakoune.
+    async fn process_command(&self, cmd: DisplayCommand) -> io::Result<()> {
+        use DisplayCommand::*;
+
+        match cmd {
+            RefreshProcessedRange(range) => self.refresh_processed_range(range).await,
+            ColorResult(richpp) => self.output_result(richpp).await,
+            OutputGoals(fg, bg) => self.output_goals(fg, bg).await,
+        }
     }
 
-    /// Updates the goal buffer by simply `cat`-ing the file to the buffer itself.
-    async fn update_goal_buffer(&self) -> io::Result<()> {
+    /// Refresh the range of processed kakoune inside the Coq buffer.
+    async fn refresh_processed_range(&self, range: CodeSpan) -> io::Result<()> {
         kak(
             &self.kak_session,
             format!(
                 r#"evaluate-commands -buffer '{}' %{{
-                  execute-keys -buffer "%opt{{coqide_goal_buffer}}" %{{
-                    %|cat<space>{}<ret>
-                  }}
+                  set-option buffer coqide_processed_range %val{{timestamp}} '{}|coqide_processed'
                 }}"#,
-                self.coq_file, self.kak_goal,
+                self.coq_file, range
             ),
         )
         .await
     }
 
-    /// Updates the result buffer by simply `cat`-ing the file to the buffer.
-    async fn update_result_buffer(&self) -> io::Result<()> {
+    /// Extract colors from the [`ProtocolRichPP`] message and output both the colors and the message to
+    /// the result buffer.
+    async fn output_result(&self, richpp: ProtocolRichPP) -> io::Result<()> {
+        let (message, colors) = tokio::task::block_in_place(|| extract_colors(richpp, 1));
+
+        overwrite_file(&self.kak_result, message).await?;
+
         kak(
             &self.kak_session,
             format!(
                 r#"evaluate-commands -buffer '{}' %{{
-                  execute-keys -buffer "%opt{{coqide_result_buffer}}" %{{
-                    %|cat<space>{}<ret>
+                  evaluate-commands -buffer "%opt{{coqide_result_buffer}}" %{{
+                    execute-keys %{{ %|cat<space>{}<ret> }}
+                    set-option buffer coqide_result_highlight %val{{timestamp}} {}
                   }}
                 }}"#,
-                self.coq_file, self.kak_result,
+                self.coq_file,
+                self.kak_result,
+                colors.join(" ")
             ),
         )
         .await
     }
+
+    /// Output all received goals to the goal buffer.
+    async fn output_goals(
+        &self,
+        fg: Vec<ProtocolValue>,
+        bg: Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
+    ) -> io::Result<()> {
+        let mut message: String;
+        let mut colors: Vec<String> = Vec::new();
+
+        if fg.is_empty() {
+            if bg.is_empty() {
+                message = "No more subgoals.".to_string();
+            } else {
+                message = "The current subgoal is complete, but there are unfinished subgoals:\n".to_string();
+                let mut line = 3usize;
+                for (first, last) in bg.into_iter() {
+                    for goal in first.into_iter().chain(last.into_iter()) {
+                        let (txt, mut cols, i) = goal_to_string(goal, line);
+
+                        message = format!("{}\n{}", message, txt);
+                        colors.append(&mut cols);
+                        line = i + 1;
+                    }
+                }                
+            }
+        } else {
+            message = format!("{} subgoal(s) remaining:\n", fg.len());
+            let mut line = 3usize;
+            for goal in fg.into_iter() {
+                let (txt, mut cols, i) = goal_to_string(goal, line);
+
+                message = format!("{}\n{}", message, txt);
+                colors.append(&mut cols);
+                line = i + 1;
+            }
+        }
+
+        overwrite_file(&self.kak_goal, message).await?;
+
+        kak(
+            &self.kak_session,
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{
+                  evaluate-commands -buffer "%opt{{coqide_goal_buffer}}" %{{
+                    execute-keys %{{ %|cat<space>{}<ret> }}
+                    set-option buffer coqide_goal_highlight %val{{timestamp}} {}
+                  }}
+                }}"#,
+                self.coq_file,
+                self.kak_goal,
+                colors.join(" ")
+            ),
+        )
+        .await
+    }
+}
+
+/// Transforms a [`ProtocolValue::Goal`] into its colored textual representation.
+fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>, usize) {
+    if let ProtocolValue::Goal(_, hyps, ccl) = goal {
+        let mut message = String::new();
+        let mut colors = Vec::new();
+
+        let mut max_size = 0usize;
+
+        for hyp in hyps {
+            let (msg, mut cols) = extract_colors(hyp, line);
+            line += 1;
+
+            max_size = max_size.max(msg.len());
+
+            message = if message.is_empty() {
+                msg
+            } else {
+                format!("{}\n{}", message, msg)
+            };
+            colors.append(&mut cols);
+        }
+        let (msg, mut cols) = extract_colors(ccl, line + 1);
+
+        max_size = max_size.max(msg.len());
+        let middle_line = "─".repeat(max_size);
+        message = if message.is_empty() {
+            line += 1;
+            format!("{}\n{}", middle_line, msg)
+        } else {
+            line += 2; 
+            format!("{}\n{}\n{}", message, middle_line, msg)
+        };
+        colors.append(&mut cols);
+
+        (message, colors, line)
+    } else {
+        unreachable!()
+    }
+}
+
+/// Extract the message and the colors from a [`ProtocolRichPP`] starting at the given line number.
+fn extract_colors(richpp: ProtocolRichPP, starting_line: usize) -> (String, Vec<String>) {
+    let ProtocolRichPP::RichPP(parts) = richpp;
+    let mut message = String::new();
+    let mut colors = Vec::new();
+    let mut current_line = starting_line;
+    let mut current_column = 1usize;
+
+    for part in parts {
+        let color_name = color_name(&part);
+
+        let color = match part {
+            ProtocolRichPPPart::Raw(txt) => {
+                for c in txt.chars() {
+                    if c == '\n' {
+                        current_line += 1;
+                        current_column = 1;
+                    } else {
+                        current_column += 1;
+                    }
+                }
+                message += txt.as_str();
+                None
+            }
+            // NOTE: there should be no \n in any of those remaining
+            ProtocolRichPPPart::Keyword(txt)
+            | ProtocolRichPPPart::Evar(txt)
+            | ProtocolRichPPPart::Type(txt)
+            | ProtocolRichPPPart::Notation(txt)
+            | ProtocolRichPPPart::Variable(txt)
+            | ProtocolRichPPPart::Reference(txt)
+            | ProtocolRichPPPart::Path(txt) => {
+                let begin = current_column;
+                let end = begin + txt.len();
+                message += txt.as_str();
+
+                current_column = end;
+                Some(format!(
+                    "{}|coqide_{}",
+                    CodeSpan::new(
+                        current_line as u64,
+                        begin as u64,
+                        current_line as u64,
+                        end as u64
+                    ),
+                    color_name,
+                ))
+            }
+        };
+
+        if let Some(color) = color {
+            colors.push(color);
+        }
+    }
+
+    (message, colors)
+}
+
+/// Retrieves the name of the color corresponding to a RichPP node.
+fn color_name(part: &ProtocolRichPPPart) -> String {
+    match part {
+        ProtocolRichPPPart::Keyword(_) => "keyword",
+        ProtocolRichPPPart::Evar(_) => "evar",
+        ProtocolRichPPPart::Type(_) => "type",
+        ProtocolRichPPPart::Notation(_) => "notation",
+        ProtocolRichPPPart::Variable(_) => "variable",
+        ProtocolRichPPPart::Reference(_) => "reference",
+        ProtocolRichPPPart::Path(_) => "path",
+        _ => "unknown",
+    }
+    .to_string()
+}
+
+/// Overwrite (or create) the file at the given path with the given content.
+async fn overwrite_file(path: &String, content: String) -> io::Result<()> {
+    let mut file = File::create(path).await?;
+
+    // file.set_len(0).await?;
+    // file.seek(SeekFrom::Start(0)).await?;
+    file.write_all(content.as_bytes()).await?;
+    file.flush().await
 }

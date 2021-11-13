@@ -18,6 +18,7 @@ use crate::{
     kakoune::{
         commands::{processor::CommandProcessor, receiver::CommandReceiver, types::Command},
         slave::KakSlave,
+        types::DisplayCommand,
     },
     state::CoqState,
 };
@@ -74,7 +75,7 @@ async fn main() -> io::Result<()> {
     //
     let (call_tx, call_rx) = mpsc::unbounded_channel::<ProtocolCall>();
     //
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<String>();
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<DisplayCommand>();
 
     let coq_state = Arc::new(Mutex::new(CoqState::new()));
 

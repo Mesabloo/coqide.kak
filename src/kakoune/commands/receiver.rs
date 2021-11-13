@@ -43,8 +43,14 @@ impl CommandReceiver {
             &kak_session,
             format!(
                 r#"evaluate-commands -buffer '{0}' %{{ coqide-populate-fd4 }}
-                evaluate-commands -buffer '{0}' %{{ edit! -scratch "%opt{{coqide_result_buffer}}" }}
-                evaluate-commands -buffer '{0}' %{{ edit! -scratch "%opt{{coqide_goal_buffer}}" }}"#,
+                evaluate-commands -buffer '{0}' %{{
+                  edit! -scratch "%opt{{coqide_result_buffer}}"
+                  add-highlighter buffer/coqide_result ranges coqide_result_highlight 
+                }}
+                evaluate-commands -buffer '{0}' %{{
+                  edit! -scratch "%opt{{coqide_goal_buffer}}"
+                  add-highlighter buffer/coqide_goal ranges coqide_goal_highlight
+                }}"#,
                 coq_file
             ),
         );

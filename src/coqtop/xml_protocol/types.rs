@@ -124,8 +124,32 @@ pub enum FeedbackContent {
 /// The type of pretty-printed text.
 #[derive(Debug, Clone)]
 pub enum ProtocolRichPP {
-    /// The raw text contained inside a `<richpp>` node, where child nodes are also rendered.
+    /// All parts in the RichPP message.
+    RichPP(Vec<ProtocolRichPPPart>),
+}
+
+/// The type of parts of a RichPP message.
+///
+/// All construction classes are found here:
+/// [https://github.com/coq/coq/blob/8cd67a3976050f20e77f5c033d09f8da70d5a49f/printing/ppconstr.ml#L28-L34]
+#[derive(Debug, Clone)]
+pub enum ProtocolRichPPPart {
+    /// Some raw string in the richpp node.
     Raw(String),
+    /// A Coq keyword.
+    Keyword(String),
+    /// ???
+    Evar(String),
+    /// A Coq type.
+    Type(String),
+    /// Some Coq notation.
+    Notation(String),
+    /// Some text which should be highlighted as a variable.
+    Variable(String),
+    /// ???
+    Reference(String),
+    /// ???
+    Path(String),
 }
 
 /// Commands that `coqidetop` can understand.

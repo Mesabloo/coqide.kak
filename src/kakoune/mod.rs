@@ -4,3 +4,5 @@ pub mod command_line;
 pub mod commands;
 /// Interact with Kakoune.
 pub mod slave;
+
+pub mod types;

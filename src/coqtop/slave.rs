@@ -16,8 +16,9 @@ use tokio_util::codec::FramedRead;
 use crate::{
     coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP},
     files::{goal_file, result_file},
+    kakoune::types::DisplayCommand,
     logger,
-    state::{CoqState, ErrorState},
+    state::{CodeSpan, CoqState, ErrorState},
 };
 
 use super::xml_protocol::{
@@ -41,7 +42,7 @@ pub struct IdeSlave {
     /// The receiving end of a channel used to transmit protocol calls to send to [`COQTOP`].
     call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
     /// The transmitting end of a channel to send commands to Kakoune.
-    cmd_tx: mpsc::UnboundedSender<String>,
+    cmd_tx: mpsc::UnboundedSender<DisplayCommand>,
     /// The file where all results are written.
     result_file: File,
     /// The file where goals are written.
@@ -54,7 +55,7 @@ impl IdeSlave {
     /// Creates a new [`IdeSlave`] by spawning 2 or 4 TCP sockets as well as a [`COQTOP`] process.
     pub async fn new(
         call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
-        cmd_tx: mpsc::UnboundedSender<String>,
+        cmd_tx: mpsc::UnboundedSender<DisplayCommand>,
         tmp_dir: &String,
         topfile: String,
     ) -> io::Result<Self> {
@@ -176,39 +177,20 @@ impl IdeSlave {
             }
             // No goal has been found
             ProtocolResult::Good(Optional(None)) => {
-                self.output_to_goals("No goals.".to_string()).await?;
-                self.send_command(String::new()).await?;
+                self.send_command(DisplayCommand::OutputGoals(Vec::new(), Vec::new()))
+                    .await?;
             }
             // Some goals found
-            ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, gg)))) => {
-                if fg.is_empty() {
-                    if bg.is_empty() {
-                        self.output_to_goals("No more subgoals.".to_string())
-                            .await?;
-                    } else {
-                        let msg =
-                            "The current subgoal is complete, but there are unfinished subgoals:"
-                                .to_string();
-
-                        log::debug!("{:?}", bg);
-                        self.output_to_goals(msg).await?;
-                    }
-                } else {
-                    let msg = format!("{} subgoal(s) remaining:\n", fg.len());
-                    let msg = fg.into_iter().fold(msg, |msg, goal| {
-                        format!("{}\n{}", msg, goal_to_string(goal))
-                    });
-                    self.output_to_goals(msg).await?;
-                }
-
-                self.send_command(String::new()).await?;
+            ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, _)))) => {
+                self.send_command(DisplayCommand::OutputGoals(fg, bg))
+                    .await?;
             }
             // Any other good result only refreshes the processed range
             ProtocolResult::Good(_) => {
                 self.refresh_processed(coq_state).await?;
             }
             // On fail, send the fail message to the result buffer
-            ProtocolResult::Fail(_, _, ProtocolRichPP::Raw(msg)) => {
+            ProtocolResult::Fail(_, _, richpp) => {
                 tokio::task::block_in_place(|| -> io::Result<()> {
                     let mut coq_state = coq_state.lock().map_err(|err| {
                         io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
@@ -219,12 +201,12 @@ impl IdeSlave {
                     Ok(())
                 })?;
 
-                self.output_to_result(msg).await?;
-                self.send_command(String::new()).await?;
+                self.send_command(DisplayCommand::ColorResult(richpp))
+                    .await?;
             }
-            ProtocolResult::Feedback(_, _, _, Message(ProtocolRichPP::Raw(msg))) => {
-                self.output_to_result(msg).await?;
-                // self.send_command(String::new()).await?;
+            ProtocolResult::Feedback(_, _, _, Message(richpp)) => {
+                self.send_command(DisplayCommand::ColorResult(richpp))
+                    .await?;
                 self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Feedback(_, _, StateId(state_id), Processed) => {
@@ -246,13 +228,6 @@ impl IdeSlave {
         Ok(())
     }
 
-    /// Writes a message to the result buffer, overwriting everything that was previously in it.
-    async fn output_to_result(&mut self, msg: String) -> io::Result<()> {
-        self.result_file.set_len(0).await?;
-        self.result_file.seek(SeekFrom::Start(0)).await?;
-        self.result_file.write_all(msg.as_bytes()).await
-    }
-
     /// Writes a message to the goal buffer, overwriting everything that was previously in it.
     async fn output_to_goals(&mut self, msg: String) -> io::Result<()> {
         self.goal_file.set_len(0).await?;
@@ -261,7 +236,7 @@ impl IdeSlave {
     }
 
     /// Sends a command through the command channel to Kakoune.
-    async fn send_command(&self, cmd: String) -> io::Result<()> {
+    async fn send_command(&self, cmd: DisplayCommand) -> io::Result<()> {
         self.cmd_tx
             .send(cmd)
             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))
@@ -269,18 +244,16 @@ impl IdeSlave {
 
     /// Refreshes the currently processed range in Kakoune.
     async fn refresh_processed(&self, coq_state: Arc<Mutex<CoqState>>) -> io::Result<()> {
-        let cmd = tokio::task::block_in_place(|| -> io::Result<String> {
+        let range = tokio::task::block_in_place(|| -> io::Result<CodeSpan> {
             let coq_state = coq_state
                 .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
-            Ok(format!(
-                r#"set-option buffer coqide_processed_range %val{{timestamp}} '{}|coqide_processed'"#,
-                coq_state.processed_range()
-            ))
+            Ok(coq_state.processed_range())
         })?;
 
-        self.send_command(cmd).await
+        self.send_command(DisplayCommand::RefreshProcessedRange(range))
+            .await
     }
 
     /// Drops the TCP sockets as well as the [`COQTOP`] process.
@@ -296,26 +269,26 @@ impl IdeSlave {
     }
 }
 
-fn goal_to_string(goal: ProtocolValue) -> String {
-    match goal {
-        ProtocolValue::Goal(_, hyps, ccl) => {
-            let mut output = String::new();
-            for ProtocolRichPP::Raw(hyp) in hyps {
-                output += hyp.as_str();
-                output += "\n";
-            }
-            output += "────────────────────────────────────────────────────\n";
-            match ccl {
-                ProtocolRichPP::Raw(ccl) => {
-                    output += ccl.as_str();
-                    output += "\n";
-                }
-            }
-            output
-        }
-        _ => String::new(),
-    }
-}
+// fn goal_to_string(goal: ProtocolValue) -> String {
+//     match goal {
+//         ProtocolValue::Goal(_, hyps, ccl) => {
+//             let mut output = String::new();
+//             for ProtocolRichPP::Raw(hyp) in hyps {
+//                 output += hyp.as_str();
+//                 output += "\n";
+//             }
+//             output += "────────────────────────────────────────────────────\n";
+//             match ccl {
+//                 ProtocolRichPP::Raw(ccl) => {
+//                     output += ccl.as_str();
+//                     output += "\n";
+//                 }
+//             }
+//             output
+//         }
+//         _ => String::new(),
+//     }
+// }
 
 /// Creates a new [`TcpListener`] listening on `127.0.0.1:0`, and returns both the
 /// listener and the port it is listening on.

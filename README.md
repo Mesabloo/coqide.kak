@@ -67,9 +67,9 @@ This plugin comes with several default options, but some of them can be altered:
   - `coqide_variable` is used to highlight variable names in the goal and result buffers.
     Defaults to `variable` if unchanged.
   - `coqide_reference` ???
-    Defaults to `documentation` because I'm quite unsure what this is used for.
+    Defaults to `variable` because I'm quite unsure what this is used for.
   - `coqide_path` ???
-    Defaults to `meta` for some reason.
+    Defaults to `module` for some reason.
 
 ## Things left to do and known bugs
 
@@ -77,12 +77,10 @@ The codebase is at some locations pretty ugly (e.g. when decoding XML nodes to R
 However, most of it should be at last a little bit documented.
 
 Here are some erroneous or incomplete features:
-- Both goal and result buffers print unformatted raw text.
-  This means that text like `<constr.keyword>forall</constr.keyword>` will be output, instead of a colored one.
-  This makes output pretty hard to read.
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
-- `coqidetop` seems to get stuck on statements of the form `intros -> H.` for some reason.
+- `coqidetop` sometimes gets stuck on statements of the form `intros H.` for some reason (might be random).
+- The internal command pipe seems to be randomly dropped, preventing further messages to be sent (a call to `echo` hangs forever).
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

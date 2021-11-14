@@ -126,7 +126,9 @@ impl IdeSlave {
         loop {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok(()),
-                Ok(resp) = ProtocolResult::decode_stream(&mut self.reader) => {
+                resp = ProtocolResult::decode_stream(&mut self.reader) => {
+                    let resp = resp?;
+                  
                     log::debug!("Received response `{:?}` from {}", resp, COQTOP);
 
                     let error_state = tokio::task::block_in_place(|| -> io::Result<ErrorState> {

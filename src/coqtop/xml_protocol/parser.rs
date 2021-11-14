@@ -178,8 +178,8 @@ parser! {
             many::<Vec<_>, _, _>(parse_attribute()),
             skip_many(space()),
             choice((
-                parse_normal_end(),
                 parse_slash_end().map(|cs| (cs, String::new())),
+                parse_normal_end(),
             )),
         ))
         .map(|(_, n1, _, attrs, _, (children, _))|
@@ -202,7 +202,10 @@ parser! {
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(byte::bytes(&b"/>"[..]).map(|_| Vec::new()))
+        any_partial_state((
+            byte(b'/').expected("slash"),
+            byte(b'>').expected("right angle"),
+        )).map(|_| Vec::new())
     }
 }
 
@@ -216,10 +219,11 @@ parser! {
     ]
     {
         any_partial_state((
-            byte::bytes(&b"</"[..]),
+            byte(b'<').expected("left angle"),
+            byte(b'/').expected("slash"),
             parse_identifier(),
-            byte(b'>'),
-        )).map(|(_, n, _)| n)
+            byte(b'>').expected("right angle"),
+        )).map(|(_, _, n, _)| n)
     }
 }
 
@@ -233,7 +237,7 @@ parser! {
     ]
     {
         any_partial_state((
-            byte(b'>'),
+            byte(b'>').expected("right angle"),
             repeat_until::<Vec<_>, _, _, _>(
                 choice((
                     attempt(parse_node().map(Child::Node)),
@@ -243,7 +247,18 @@ parser! {
             ),
             parse_tag_end(),
         ))
-        .map(|(_, cs, n)| (cs, n))
+        .map(|(_, cs, n)| {
+            (
+              // small trick: sometimes, the parser yields a `Child::Raw("")` which should be ignored.
+              cs.into_iter()
+                  .filter(|n | match n {
+                      Child::Raw(str) => !str.is_empty(),
+                      _ => true,
+                  })
+                  .collect(),
+              n
+            )
+        })
     }
 }
 
@@ -260,6 +275,8 @@ fn unescape(str: String) -> String {
 }
 
 parser! {
+    type PartialState = AnyPartialState;
+  
     fn parse_attribute['a, Input]()(Input) -> (String, String)
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
@@ -269,7 +286,7 @@ parser! {
         any_partial_state((
             parse_identifier(),
             skip_many(space()),
-            byte(b'='),
+            byte(b'=').expected("equals"),
             skip_many(space()),
             parse_string(),
             skip_many(space()),
@@ -279,17 +296,25 @@ parser! {
 }
 
 parser! {
+    type PartialState = AnyPartialState;
+
     fn parse_string['a, Input]()(Input) -> String
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state((byte(b'"'), from_str(take_until_byte(b'"')), byte(b'"'))).map(|(_, val, _)| val)
+        any_partial_state((
+            byte(b'"').expected("double quote"),
+            from_str(take_until_byte(b'"')),
+            byte(b'"').expected("double quote")
+        )).map(|(_, val, _)| val)
     }
 }
 
 parser! {
+    type PartialState = AnyPartialState;
+
     fn parse_identifier['a, Input]()(Input) -> String
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
@@ -298,9 +323,9 @@ parser! {
     {
         any_partial_state(from_str(many1::<Vec<_>, _, _>(choice((
             alpha_num(),
-            byte(b'_'),
-            byte(b'-'),
-            byte(b'.'),
+            byte(b'_').expected("underscore"),
+            byte(b'-').expected("dash"),
+            byte(b'.').expected("dot"),
         )))))
     }
 }

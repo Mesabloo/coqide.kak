@@ -103,7 +103,7 @@ async fn main() -> io::Result<()> {
             res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone(), stop_rx.clone()) => break res,
             res = kakoune_command_processor.process(stop_rx.clone()) => break res,
             res = kakslave.process(stop_rx.clone()) => break res,
-            // else => {}
+            else => {}
         }
     }?;
 

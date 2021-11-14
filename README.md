@@ -85,8 +85,6 @@ Here are some erroneous or incomplete features:
 
   This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
 - The “parser” used to detect the next statement does not take in account qualified identifiers.
-- `coqidetop` sometimes gets randomly stuck on statements.
-- The `FramedRead` used to internally read `coqidetop`'s stdout randomly gets stuck, preventing further decoding of XML nodes (stream refused to go forward more).
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

@@ -452,6 +452,7 @@ impl FeedbackContent {
                     xml.children[0].as_node().cloned().unwrap(),
                 ))
             }
+            "addedaxiom" => Ok(FeedbackContent::AddedAxiom),
             _ => unreachable!(),
         }
     }

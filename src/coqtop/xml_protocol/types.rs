@@ -119,6 +119,8 @@ pub enum FeedbackContent {
     WorkerStatus(XMLNode),
     /// Processing some call
     Processing(XMLNode),
+    /// Some proof has been temporarily admitted
+    AddedAxiom,
 }
 
 /// The type of pretty-printed text.

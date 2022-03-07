@@ -155,11 +155,13 @@ define-command -docstring "
 " -hidden -params 0 coqide-on-text-change %{
   evaluate-commands %sh{
     IFS=" .,|" read -r _ _ _ eline ecol _ <<< "$kak_opt_coqide_processed_range"
-    eline=${eline:-0}
-    ecol=${ecol:-0}
+    eline=${eline:-1}
+    ecol=${ecol:-1}
 
     first_selection=$(sort -g <<< "${kak_selections_desc// /$'\n'}" | uniq | head -1)
     IFS=".,|" read -r _ _ sline scol _ <<< "$first_selection"
+    sline=${sline:-1}
+    scol=${scol:-1}
 
     if [ "$sline" -lt "$eline" -o "$sline" -eq "$eline" -a "$scol" -lt "$ecol" ]; then
       # NOTE: `-a` has a bigger precedence than `-o`, so the test above is really
@@ -214,14 +216,16 @@ define-command -docstring "
       fi
       
       IFS=" .,|" read -r _ _ _ line0 col0 _ <<< "$kak_opt_coqide_processed_range"
-      line0=${line0:-0}
-      col0=${col0:-0}
+      line0=${line0:-1}
+      col0=${col0:-1}
 
       echo "set-option buffer coqide_move_line0 '$line0'"
       echo "set-option buffer coqide_move_col0 '$col0'"
 
       first_selection=$(sort -g <<< "${kak_selections_desc// /$'\n'}" | uniq | head -1)
       IFS=".,|" read -r _ _ line1 col1 _ <<< "$first_selection"
+      line1=${line1:-1}
+      col1=${col1:-1}
 
       echo "set-option buffer coqide_move_line1 '$line1'"
       echo "set-option buffer coqide_move_col1 '$col1'"
@@ -262,18 +266,22 @@ define-command -docstring "
 
       for span in $(printf "%s\n" $all_ranges); do      
         IFS=".," read -r bline bcol eline ecol _ <<< "$span"
+        bline=${bline:-1}
+        bcol=${bcol:-1}
+        eline=${eline:-1}
+        ecol=${ecol:-1}
 
         position="$(printf "%d.%d,%d.%d," "$bline" "$bcol" "$eline" "$ecol")"
         
         # Get all the code between $bline:$bcol and $eline:$col
         keys="${bline}ggh"
-        if [ ${bcol:-1} -ne 1 ]; then
+        if [ $bcol -ne 1 ]; then
           keys="$keys$((bcol - 1))l"
         fi
-        if [ ${bline:-0} -eq ${eline:-1} ]; then
+        if [ $bline -eq $eline ]; then
           keys="$keys$((ecol - bcol))L"
         else
-          if [ ${eline:-1} -gt ${kak_buf_line_count:-1} ]; then
+          if [ $eline -gt ${kak_buf_line_count:-1} ]; then
             keys="${keys}Ge"
           else
             keys="$keys$((eline - bline))JGh$((ecol - 1))L"
@@ -350,15 +358,19 @@ define-command -docstring "
     printf '' >"$kak_opt_coqide_next_tmp_file"
 
     IFS="., " read -r bline bcol eline ecol _ <<< "$next_range"
+    bline=${bline:-1}
+    bcol=${bcol:-1}
+    eline=${eline:-1}
+    ecol=${ecol:-1}
     # Get all the code between $bline:$bcol and $eline:$col
     keys="${bline}ggh"
-    if [ ${bcol:-1} -ne 1 ]; then
+    if [ $bcol -ne 1 ]; then
       keys="$keys$((bcol - 1))l"
     fi
-    if [ ${bline:-1} -eq ${eline:-1} ]; then
+    if [ $bline -eq $eline ]; then
       keys="$keys$((ecol - bcol))L"
     else
-      if [ ${eline:-1} -gt ${kak_buf_line_count:-1} ]; then
+      if [ $eline -gt ${kak_buf_line_count:-1} ]; then
         keys="${keys}Ge"
       else
         keys="$keys$((eline - bline))JGh$((ecol - 1))L"
@@ -368,7 +380,11 @@ define-command -docstring "
     echo "set-option buffer coqide_next_span '$next_range'"
   }
   evaluate-commands %sh{
-    IFS="., " read -r bline bcol eline ecol _ <<< "$kak_opt_coqide_next_span"      
+    IFS="., " read -r bline bcol eline ecol _ <<< "$kak_opt_coqide_next_span"
+    bline=${bline:-1}
+    bcol=${bcol:-1}
+    eline=${eline:-1}
+    ecol=${ecol:-1}
         
     code="$(cat "$kak_opt_coqide_next_tmp_file")"
     echo "coqide-send-to-process %§next $bline.$bcol,$eline.$ecol,\"$code\"§"
@@ -385,7 +401,7 @@ define-command -docstring "
 define-command -docstring "
   Send a query directly to the underlying `coqidetop` process, in a disposable context.
 " -params 0 coqide-query %{
-  prompt 'Query: ' %{
+  prompt 'Query:' %{
     coqide-send-to-process %sh{ echo "query \"$(sed 's/"/\\"/g' <<< "$kak_text")\"" }
   }
 }

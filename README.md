@@ -88,7 +88,6 @@ Here are some erroneous or incomplete features:
   A workaround is simply to go back 2-3 states and retry processing.
 
   This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
-- The “parser” used to detect the next statement does not take in account qualified identifiers.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

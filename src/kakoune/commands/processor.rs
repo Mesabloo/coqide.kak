@@ -14,7 +14,7 @@ use crate::{
         ProtocolCall, ProtocolRichPP, ProtocolRichPPPart, ProtocolValue,
     },
     kakoune::types::DisplayCommand,
-    state::{CodeSpan, CoqState},
+    state::{CodeSpan, CoqState, ErrorState},
 };
 
 use super::types::Command;
@@ -86,35 +86,65 @@ impl CommandProcessor {
     ///
     /// The corresponding `self.process_XXX` (where `XXX` is the command) are called.
     async fn process_command(&mut self, cmd: Command) -> io::Result<()> {
+        let error_state = tokio::task::block_in_place(|| -> io::Result<ErrorState> {
+            let mut coq_state = self
+                .coq_state
+                .lock()
+                .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
+            let st = coq_state.get_error_state();
+            if st == ErrorState::Ok {
+                coq_state.reset_last_processed();
+            }
+            // coq_state.ok();
+
+            Ok(st)
+        })?;
+
+        match cmd {
+            Command::Init => self.process_init().await?,
+            Command::Quit => self.process_quit().await?,
+            Command::Previous => {
+                self.clean_buffer().await?;
+                self.reset_error_state().await?;
+                self.process_previous().await?
+            }
+            Command::RewindTo(line, col) => {
+                self.clean_buffer().await?;
+                self.reset_error_state().await?;
+                self.process_rewind_to(line, col).await?
+            }
+            Command::Query(str) => self.process_query(str).await?,
+            Command::MoveTo(spans) => self.process_move_to(spans).await?,
+            Command::Next(range, code) if error_state == ErrorState::Ok => {
+                self.clean_buffer().await?;
+                self.process_next(range, code).await?
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    /// Resets the error state of the internal state.
+    async fn reset_error_state(&mut self) -> io::Result<()> {
         tokio::task::block_in_place(|| -> io::Result<()> {
             let mut coq_state = self
                 .coq_state
                 .lock()
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
-            coq_state.reset_last_processed();
             coq_state.ok();
 
             Ok(())
-        })?;
+        })
+    }
 
+    async fn clean_buffer(&mut self) -> io::Result<()> {
         // remove any junk message left in the buffer
         self.cmd_tx
             .send(DisplayCommand::ColorResult(ProtocolRichPP::RichPP(vec![
                 ProtocolRichPPPart::Raw(String::new()),
             ])))
-            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, format!("{:?}", err)))?;
-
-        match cmd {
-            Command::Init => self.process_init().await?,
-            Command::Quit => self.process_quit().await?,
-            Command::Previous => self.process_previous().await?,
-            Command::RewindTo(line, col) => self.process_rewind_to(line, col).await?,
-            Command::Query(str) => self.process_query(str).await?,
-            Command::MoveTo(spans) => self.process_move_to(spans).await?,
-            Command::Next(range, code) => self.process_next(range, code).await?,
-        }
-
-        Ok(())
+            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, format!("{:?}", err)))
     }
 
     /////////////////////////////////////////////////////////:

@@ -1,4 +1,8 @@
-use std::{io::{self, SeekFrom}, process::Stdio, sync::{Arc, Mutex}};
+use std::{
+    io::{self, SeekFrom},
+    process::Stdio,
+    sync::{Arc, Mutex},
+};
 
 use tokio::{
     fs::File,
@@ -128,18 +132,10 @@ impl IdeSlave {
                 Ok(_) = stop_rx.changed() => break Ok(()),
                 resp = ProtocolResult::decode_stream(&mut self.reader) => {
                     let resp = resp?;
-                  
+
                     log::debug!("Received response `{:?}` from {}", resp, COQTOP);
 
-                    let error_state = tokio::task::block_in_place(|| -> io::Result<ErrorState> {
-                        let coq_state = coq_state.lock()
-                            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, format!("{:?}", err)))?;
-                        Ok(coq_state.get_error_state())
-                    })?;
-
-                    if error_state == ErrorState::Ok {
-                        self.process_response(coq_state.clone(), resp).await?;
-                    }
+                    self.process_response(coq_state.clone(), resp).await?;
                 }
                 Some(call) = self.call_rx.recv() => {
                     let encoded = call.encode();
@@ -170,6 +166,7 @@ impl IdeSlave {
                     })?;
 
                     coq_state.set_current_state_id(state_id);
+                    coq_state.ok();
                     Ok(())
                 })?;
 
@@ -210,7 +207,7 @@ impl IdeSlave {
                 // is also sent along with it
 
                 self.send_command(DisplayCommand::ColorResult(richpp))
-                   .await?;
+                    .await?;
             }
             ProtocolResult::Feedback(_, _, _, Message(richpp)) => {
                 self.send_command(DisplayCommand::ColorResult(richpp))

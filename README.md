@@ -83,7 +83,7 @@ Here are some erroneous or incomplete features:
 - Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic).
 - Highlight ranges where errors lie (e.g. in red), maybe with the possibility to underline/bold where exactly the error is
   (given by `coqidetop`, relative to the beginning of the next statement range).
-- Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
+- Modifying the last erroneous range should reset the error state to `ErrorState::Ok`.
 - Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
   A workaround is simply to go back 2-3 states and retry processing.
 

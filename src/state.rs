@@ -128,7 +128,7 @@ pub struct CoqState {
     state_id_to_range: BiMap<i64, CodeSpan>,
     root_id: i64,
     current_id: i64,
-    last_processed: bool,
+    last_processed: Option<i64>,
 }
 
 impl CoqState {
@@ -144,7 +144,7 @@ impl CoqState {
             state_id_to_range: BiMap::new(),
             root_id: 1,
             current_id: 0,
-            last_processed: false,
+            last_processed: None,
         }
     }
 
@@ -165,7 +165,12 @@ impl CoqState {
 
     /// Nothing was processed anymore.
     pub fn reset_last_processed(&mut self) {
-        self.last_processed = false;
+        self.last_processed = None;
+    }
+
+    /// Set the last processed state ID
+    pub fn set_last_processed(&mut self, state_id: i64) {
+        self.last_processed = Some(state_id);
     }
 
     /// Sets the current state ID (and the root ID if it wasn't set already).
@@ -207,7 +212,6 @@ impl CoqState {
     /// Adds a new processed range associated with a state ID to the state.
     pub fn push_range(&mut self, state_id: i64, range: CodeSpan) {
         self.state_id_to_range.insert(state_id, range);
-        self.last_processed = true;
     }
 
     /// Backtrack to the last state before the indicated position.
@@ -219,7 +223,7 @@ impl CoqState {
         };
 
         self.state_id_to_range.retain(|_, span| is_before(span));
-        self.last_processed = false;
+        self.last_processed = None;
 
         self.current_id = *self
             .state_id_to_range
@@ -237,8 +241,7 @@ impl CoqState {
 
     /// Removes the last processed range from the daemon state.
     pub fn backtrack_last_processed(&mut self) {
-        if self.last_processed {
-            let state_id = self.get_current_state_id();
+        if let Some(state_id) = self.last_processed {
             self.state_id_to_range.remove_by_left(&state_id);
 
             self.current_id = *self
@@ -247,7 +250,7 @@ impl CoqState {
                 .max()
                 .unwrap_or(&self.root_id);
 
-            self.last_processed = false;
+            self.last_processed = None;
         }
     }
 

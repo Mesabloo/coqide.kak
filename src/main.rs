@@ -105,7 +105,7 @@ async fn main() -> io::Result<()> {
             res = kakslave.process(stop_rx.clone()) => break res,
             else => {}
         }
-    }?;
+    }.unwrap();
 
     kakoune_command_receiver.stop().await?;
     ideslave.quit().await?;

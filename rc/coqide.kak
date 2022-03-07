@@ -126,7 +126,7 @@ define-command -docstring "
   }
   
   set-option buffer coqide_pid %sh{
-    "$kak_opt_coqide_command" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe" </dev/null &>"$kak_opt_coqide_pipe/log" &
+    env RUST_BACKTRACE=1 "$kak_opt_coqide_command" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe" </dev/null &>"$kak_opt_coqide_pipe/log" &
     echo "$!"
   }
 

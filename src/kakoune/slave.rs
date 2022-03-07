@@ -100,7 +100,7 @@ impl KakSlave {
     async fn output_result(&self, richpp: ProtocolRichPP) -> io::Result<()> {
         let (message, colors) = tokio::task::block_in_place(|| extract_colors(richpp, 1));
 
-        overwrite_file(&self.kak_result, message, false).await?;
+        overwrite_file(&self.kak_result, message, true).await?;
 
         kak(
             &self.kak_session,

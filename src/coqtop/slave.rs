@@ -200,16 +200,17 @@ impl IdeSlave {
                         io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
                     })?;
 
-                    //coq_state.backtrack_last_processed();
+                    coq_state.backtrack_last_processed();
                     coq_state.error();
                     Ok(())
                 })?;
+                self.refresh_processed(coq_state).await?;
 
                 // NOTE: should we really ignore this error? sometimes it seems a `message` feedback
                 // is also sent along with it
 
-                //self.send_command(DisplayCommand::ColorResult(richpp))
-                //    .await?;
+                self.send_command(DisplayCommand::ColorResult(richpp))
+                   .await?;
             }
             ProtocolResult::Feedback(_, _, _, Message(richpp)) => {
                 self.send_command(DisplayCommand::ColorResult(richpp))
@@ -223,6 +224,7 @@ impl IdeSlave {
                     })?;
 
                     coq_state.set_current_state_id(state_id);
+                    coq_state.set_last_processed(state_id);
                     Ok(())
                 })?;
 

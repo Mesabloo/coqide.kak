@@ -205,8 +205,11 @@ impl IdeSlave {
                     Ok(())
                 })?;
 
-                self.send_command(DisplayCommand::ColorResult(richpp))
-                    .await?;
+                // NOTE: should we really ignore this error? sometimes it seems a `message` feedback
+                // is also sent along with it
+
+                //self.send_command(DisplayCommand::ColorResult(richpp))
+                //    .await?;
             }
             ProtocolResult::Feedback(_, _, _, Message(richpp)) => {
                 self.send_command(DisplayCommand::ColorResult(richpp))

@@ -80,9 +80,11 @@ However, most of it should be at last a little bit documented.
 
 Here are some erroneous or incomplete features:
 - Add ranges instead of modifying a global range
-- Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic)
+- Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic).
 - Highlight ranges where errors lie (e.g. in red), maybe with the possibility to underline/bold where exactly the error is
-  (given by `coqidetop`, relative to the beginning of the next statement range)
+  (given by `coqidetop`, relative to the beginning of the next statement range).
+- Encountering an error should backtrack the highlighted range to the last valid position and the last valid state ID.
+- Only output errors once, but allow appending to the output (e.g. when doing a move to cursor).
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
   A workaround is simply to go back 2-3 states and retry processing.

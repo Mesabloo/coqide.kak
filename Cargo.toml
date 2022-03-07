@@ -6,15 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-signals = "0.3.1"
-libc = "0.2.104"
+async-signals = "0.4.0"
+libc = "0.2.119"
 exitcode = "1.1.2"
 log = "0.4.14"
 log4rs = "1.0.0"
 unix-named-pipe = "0.2.0"
-combine = { version = "4.6.2" , features = ["tokio"] }
-bytes = "1.*"
-tokio-util = { version = "0.6", features = ["codec"] }
-tokio = { version = "1.12.0", features = ["net", "fs", "io-util", "process", "rt", "macros", "rt-multi-thread", "sync"] }
-tokio-stream = { version = "0.1.7" }
-bimap = "0.6.1"
+combine = { version = "4.6.3" , features = ["tokio"] }
+bytes = "1.1.0"
+tokio-util = { version = "0.7.0", features = ["codec"] }
+tokio = { version = "1.17.0", features = ["net", "fs", "io-util", "process", "rt", "macros", "rt-multi-thread", "sync"] }
+tokio-stream = { version = "0.1.8" }
+bimap = "0.6.2"

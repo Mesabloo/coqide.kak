@@ -84,7 +84,6 @@ Here are some erroneous or incomplete features:
 - Highlight ranges where errors lie (e.g. in red), maybe with the possibility to underline/bold where exactly the error is
   (given by `coqidetop`, relative to the beginning of the next statement range).
 - Encountering an error should backtrack the highlighted range to the last valid position and the last valid state ID.
-- Only output errors once, but allow appending to the output (e.g. when doing a move to cursor).
 - Trying to go past an error multiple times will make state IDs inconsistent therefore leading to a `coqidetop` error.
 - Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
   A workaround is simply to go back 2-3 states and retry processing.

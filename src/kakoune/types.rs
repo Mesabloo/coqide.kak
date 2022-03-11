@@ -8,6 +8,8 @@ use crate::{
 pub enum DisplayCommand {
     /// Refresh the processed range.
     RefreshProcessedRange(CodeSpan),
+    /// Refresh the error range.
+    RefreshErrorRange(Option<CodeSpan>),
     /// Output the result with colors.
     ColorResult(ProtocolRichPP),
     /// Show some goals.

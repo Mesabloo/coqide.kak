@@ -58,6 +58,8 @@ This plugin comes with several default options, but some of them can be altered:
 - **Colors:**
   - `coqide_processed` is the `face` used to highlight Coq code which has already been processed by the daemon.
     This can be customized as wanted using `set-face`, but comes with the default value `default,black`.
+  - `coqide_errors` is the `face` used to highlight errors in the Coq buffer.
+    It defaults to `default,red` and can be customized with `set-face`.
   - `coqide_keyword` is the `face` used to color keywords in both goal and result buffers.
     It defauls to the same face used to color `keyword`s.
   - `coqide_evar` is used to highlight specific variables in the goal and result buffers.
@@ -81,13 +83,12 @@ However, most of it should be at last a little bit documented.
 Here are some erroneous or incomplete features:
 - Add ranges instead of modifying a global range
 - Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic).
-- Highlight ranges where errors lie (e.g. in red), maybe with the possibility to underline/bold where exactly the error is
-  (given by `coqidetop`, relative to the beginning of the next statement range).
-- Modifying the last erroneous range should reset the error state to `ErrorState::Ok`.
+- Modifying the last erroneous range should reset the error state to `ErrorState::Ok` to allow continuing processing.
 - Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
   A workaround is simply to go back 2-3 states and retry processing.
 
   This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
+- Editing at the beginning of the buffer (before any processing) breaks the whole extension.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

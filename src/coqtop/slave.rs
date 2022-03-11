@@ -156,6 +156,7 @@ impl IdeSlave {
         use FeedbackContent::*;
         use ProtocolValue::*;
 
+        self.refresh_error(None).await?;
         match resp {
             // Result of an Init or Add call
             ProtocolResult::Good(StateId(state_id))
@@ -192,16 +193,19 @@ impl IdeSlave {
             }
             // On fail, send the fail message to the result buffer
             ProtocolResult::Fail(_, _, richpp) => {
-                tokio::task::block_in_place(|| -> io::Result<()> {
+                let error_range = tokio::task::block_in_place(|| -> io::Result<Option<CodeSpan>> {
                     let mut coq_state = coq_state.lock().map_err(|err| {
                         io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
                     })?;
 
+                    let id = coq_state.get_current_state_id();
+                    let range = coq_state.range_of(id);
+                    coq_state.error(id);
                     coq_state.backtrack_last_processed();
-                    coq_state.error();
-                    Ok(())
+                    Ok(range)
                 })?;
                 self.refresh_processed(coq_state).await?;
+                self.refresh_error(error_range).await?;
 
                 // NOTE: should we really ignore this error? sometimes it seems a `message` feedback
                 // is also sent along with it
@@ -260,6 +264,12 @@ impl IdeSlave {
         })?;
 
         self.send_command(DisplayCommand::RefreshProcessedRange(range))
+            .await
+    }
+
+    /// Refreshes the current error in Kakoune.
+    async fn refresh_error(&self, error_range: Option<CodeSpan>) -> io::Result<()> {
+        self.send_command(DisplayCommand::RefreshErrorRange(error_range))
             .await
     }
 

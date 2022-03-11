@@ -76,6 +76,7 @@ impl KakSlave {
 
         match cmd {
             RefreshProcessedRange(range) => self.refresh_processed_range(range).await,
+            RefreshErrorRange(range) => self.refresh_error_range(range).await,
             ColorResult(richpp) => self.output_result(richpp).await,
             OutputGoals(fg, bg) => self.output_goals(fg, bg).await,
         }
@@ -90,6 +91,24 @@ impl KakSlave {
                   set-option buffer coqide_processed_range %val{{timestamp}} '{}|coqide_processed'
                 }}"#,
                 self.coq_file, range
+            ),
+        )
+        .await
+    }
+
+    /// Refresh the error range inside the Coq buffer.
+    async fn refresh_error_range(&self, range: Option<CodeSpan>) -> io::Result<()> {
+        kak(
+            &self.kak_session,
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{
+                  set-option buffer coqide_error_range {}
+                }}"#,
+                self.coq_file,
+                match range {
+                    Some(range) => format!("%val{{timestamp}} '{}|coqide_errors'", range),
+                    None => "%val{timestamp}".to_string(),
+                }
             ),
         )
         .await

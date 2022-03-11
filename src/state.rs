@@ -6,7 +6,7 @@ use bimap::BiMap;
 /// - [`ErrorState::Ok`] means that everything is fine and we can continue.
 /// - [`ErrorState::Error`] means that an error occured somewhere in your Coq code (e.g. a syntax error)
 ///   therefore the daemon is unable to continue its work.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum ErrorState {
     Ok,
     Error,
@@ -15,10 +15,10 @@ pub enum ErrorState {
 /// A very simply code span structure containing beginning and ending positions.
 #[derive(PartialEq, Eq, Ord, Hash, Debug, Clone, Copy)]
 pub struct CodeSpan {
-    begin_line: u64,
-    begin_column: u64,
-    end_line: u64,
-    end_column: u64,
+    pub begin_line: u64,
+    pub begin_column: u64,
+    pub end_line: u64,
+    pub end_column: u64,
 }
 
 impl CodeSpan {
@@ -71,6 +71,13 @@ impl CodeSpan {
                 self.end_column
             },
         }
+    }
+
+    pub fn includes(&self, other: &CodeSpan) -> bool {
+        self.begin_line <= other.begin_line
+            && self.end_line >= other.end_line
+            && self.begin_column <= other.begin_column
+            && self.end_column >= other.end_column
     }
 }
 
@@ -129,6 +136,7 @@ pub struct CoqState {
     root_id: i64,
     current_id: i64,
     last_processed: Option<i64>,
+    last_error_range: CodeSpan,
 }
 
 impl CoqState {
@@ -145,12 +153,14 @@ impl CoqState {
             root_id: 1,
             current_id: 0,
             last_processed: None,
+            last_error_range: CodeSpan::default(),
         }
     }
 
     /// Move into an error state.
-    pub fn error(&mut self) {
+    pub fn error(&mut self, err_id: i64) {
         self.error_state = ErrorState::Error;
+        self.last_error_range = self.range_of(err_id).unwrap_or(CodeSpan::default())
     }
 
     /// Go back to an ok state.
@@ -171,6 +181,11 @@ impl CoqState {
     /// Set the last processed state ID
     pub fn set_last_processed(&mut self, state_id: i64) {
         self.last_processed = Some(state_id);
+    }
+
+    /// Gets the last range where an error was.
+    pub fn get_error_range(&self) -> CodeSpan {
+        self.last_error_range
     }
 
     /// Sets the current state ID (and the root ID if it wasn't set already).
@@ -261,7 +276,7 @@ impl CoqState {
             .left_values()
             .max()
             .unwrap_or(&self.root_id);
-          
+
         self.state_id_to_range.remove_by_left(&state_id);
         self.current_id = *self
             .state_id_to_range
@@ -270,5 +285,10 @@ impl CoqState {
             .unwrap_or(&self.root_id);
 
         state_id
+    }
+
+    /// Returns the range processed (or being processed) for the given state ID.
+    pub fn range_of(&self, state_id: i64) -> Option<CodeSpan> {
+        self.state_id_to_range.get_by_left(&state_id).cloned()
     }
 }

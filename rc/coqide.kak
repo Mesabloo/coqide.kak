@@ -8,6 +8,7 @@
 # - coqide-move-to:    move to the end of the next Coq statement (from the main cursor) and try to process until this point
 # ------- Colors
 # - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
+# - coqide_errors:     a face to highlight errors returned by CoqIDE
 # - coqide_keyword:    how keywords are colored in goal/result buffers
 # - coqide_evar:       how evars are colored in goal/result buffers
 # - coqide_type:       how type are colored in goal/result buffers
@@ -21,6 +22,7 @@ declare-option -docstring "
 " str coqide_command "coqide-daemon"
 
 set-face global coqide_processed default,black
+set-face global coqide_errors default,red
 
 set-face global coqide_keyword @keyword
 set-face global coqide_evar @variable
@@ -68,7 +70,13 @@ declare-option -docstring "
   The range to be highlighted in the buffer, which indicates how much the buffer has been processed by `coqidetop`.
 
   The face used to highlight can be customised with the option `coqide_processed`.
-" -hidden range-specs coqide_processed_range 
+" -hidden range-specs coqide_processed_range
+
+declare-option -docstring "
+  The range to be highlighted in the buffer, which indicates that an error happened when processing the range.
+
+  The face can be customized with the face `coqide_errors`.
+" -hidden range-specs coqide_error_range
 
 declare-option -docstring "
   The name of the buffer used to show logs of the daemon.
@@ -108,6 +116,7 @@ define-command -docstring "
   
   set-option buffer coqide_buffer %val{buffile}
   set-option buffer coqide_processed_range %val{timestamp} '1.1,1.1|coqide_processed'
+  set-option buffer coqide_error_range %val{timestamp}
   
   set-option buffer coqide_pipe %sh{
     filename="${kak_opt_coqide_buffer//[^A-Za-z0-9._-]/_}"
@@ -147,6 +156,7 @@ define-command -docstring "
   }
 
   add-highlighter -override buffer/coqide_processed ranges coqide_processed_range
+  add-highlighter -override buffer/coqide_errors ranges coqide_error_range
 }
 
 define-command -docstring "
@@ -489,6 +499,7 @@ define-command -docstring "
   }
 
   remove-highlighter buffer/coqide_processed
+  remove-highlighter buffer/coqide_errors
 
   unset-option buffer coqide_log_buffer
   unset-option buffer coqide_goal_buffer

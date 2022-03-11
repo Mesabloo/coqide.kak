@@ -85,7 +85,7 @@ def yield_position():
 
 # Iterate through all the characters from stdin
 for char in lazy_read_stdin():
-    print(f'{at_beginning_of_coq_line} - {state_line}:{state_column} {char}: [{" ".join(map(str, states))}]', file=sys.stderr)
+    #print(f'{at_beginning_of_coq_line} - {state_line}:{state_column} {char}: [{" ".join(map(str, states))}]', file=sys.stderr)
 
     last_known_state = states[-1] if len(states) > 0 else None
 

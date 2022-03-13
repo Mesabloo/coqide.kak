@@ -87,6 +87,7 @@ Here are some erroneous or incomplete features:
   A workaround is simply to go back 2-3 states and retry processing.
 
   This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
+- Output given up goals (not necessarily the entire goal, but at least that there are some).
 - Editing at the beginning of the buffer (before any processing) breaks the whole extension.
 - ... and some other things that I did not see.
 

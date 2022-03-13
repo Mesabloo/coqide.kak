@@ -2,13 +2,19 @@ use std::io;
 
 use bytes::Buf;
 
-use combine::{ParseError, RangeStream, attempt, choice, easy, from_str, many, many1, parser, parser::{
+use combine::{
+    attempt, choice, easy, from_str, many, many1, parser,
+    parser::{
         byte::{self, digit, newline},
         combinator::{any_partial_state, AnyPartialState},
         range::range,
         repeat::repeat_until,
         token,
-    }, sep_by1, skip_many, skip_many1, stream::PartialStream};
+    },
+    sep_by1, skip_many, skip_many1,
+    stream::PartialStream,
+    ParseError, RangeStream,
+};
 
 use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
@@ -102,6 +108,7 @@ parser! {
             attempt(parse_move_to()),
             attempt(parse_next()),
             attempt(parse_quit()),
+            attempt(parse_ignore_error()),
             ignore_byte(),
         )))
     }
@@ -226,6 +233,19 @@ parser! {
     {
         any_partial_state(range(&b"quit\n"[..])).map(|_| Some(Command::Quit))
     }
+}
+
+parser! {
+    type PartialState = AnyPartialState;
+
+    fn parse_ignore_error['a, Input]()(Input) -> Option<Command>
+      where [
+          Input: RangeStream<Token = u8, Range = &'a [u8]>,
+          Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+      ]
+      {
+          any_partial_state(range(&b"ignore-error\n"[..])).map(|_| Some(Command::IgnoreError))
+      }
 }
 
 parser! {

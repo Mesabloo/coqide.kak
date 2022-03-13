@@ -93,21 +93,7 @@ impl CommandProcessor {
                 .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
 
             let mut st = coq_state.get_error_state();
-            if st == ErrorState::Error {
-                let range = coq_state.get_error_range();
-                match &cmd {
-                    Command::Next(next, _)
-                        if range.begin_line == next.begin_line
-                            && range.begin_column == next.begin_column =>
-                    {
-                        // do this only when text has changed BEFORE the error (any text added or removed)
-                        // in fact, we may do this in a special command
-                        coq_state.ok();
-                        st = ErrorState::Ok;
-                    }
-                    _ => {}
-                }
-            } else {
+            if st == ErrorState::Ok {
                 coq_state.reset_last_processed();
             }
             // coq_state.ok();
@@ -133,6 +119,13 @@ impl CommandProcessor {
             Command::Next(range, code) if error_state == ErrorState::Ok => {
                 self.clean_buffer().await?;
                 self.process_next(range, code).await?
+            }
+            Command::IgnoreError => {
+                if error_state == ErrorState::Error {
+                    // only reset error state if we were errored out
+                    self.reset_error_state().await?;
+                    // after that, the error state is set to `Ok` so there should be no more processing
+                }
             }
             c => log::info!(
                 "Ignoring command {:?} (maybe it is not ok to process it: {:?})",

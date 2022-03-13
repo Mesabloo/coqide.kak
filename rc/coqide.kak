@@ -155,8 +155,8 @@ define-command -docstring "
     "
   }
 
-  add-highlighter -override buffer/coqide_processed ranges coqide_processed_range
   add-highlighter -override buffer/coqide_errors ranges coqide_error_range
+  add-highlighter -override buffer/coqide_processed ranges coqide_processed_range
 }
 
 define-command -docstring "
@@ -168,6 +168,10 @@ define-command -docstring "
     eline=${eline:-1}
     ecol=${ecol:-1}
 
+    IFS=" .,|" read -r _ _ _ errline errcol _ <<< "$kak_opt_coqide_error_range"
+    errline=${errline:-1}
+    errcol=${errcol:-1}
+
     first_selection=$(sort -g <<< "${kak_selections_desc// /$'\n'}" | uniq | head -1)
     IFS=".,|" read -r _ _ sline scol _ <<< "$first_selection"
     sline=${sline:-1}
@@ -178,6 +182,12 @@ define-command -docstring "
       #       `$sline < $eline || ($sline == $eline && $scol < $ecol)`
 
       echo "coqide-invalidate-state $sline $scol"
+    fi
+    if [ "$sline" -lt "$errline" -o "$sline" -eq "$errline" -a "$scol" -lt "$errcol" ]; then
+      # NOTE: `-a` has a bigger precedence than `-o`, so the test above is really
+      #       `$sline < $errline || ($sline == $errline && $scol < $errcol)`
+
+      echo "coqide-invalidate-error"
     fi
   }
 }
@@ -195,6 +205,12 @@ define-command -docstring "
     try %{ execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>" }
     coqide-send-to-process "rewind-to %arg{1} %arg{2}"
   }
+}
+
+define-command -docstring "
+  
+" -hidden -params 0 coqide-invalidate-error %{
+  coqide-send-to-process "ignore-error"
 }
 
 define-command -docstring "

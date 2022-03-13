@@ -83,7 +83,6 @@ However, most of it should be at last a little bit documented.
 Here are some erroneous or incomplete features:
 - Add ranges instead of modifying a global range
 - Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic).
-- Modifying the last erroneous range should reset the error state to `ErrorState::Ok` to allow continuing processing.
 - Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
   A workaround is simply to go back 2-3 states and retry processing.
 

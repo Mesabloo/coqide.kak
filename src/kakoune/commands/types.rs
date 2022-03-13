@@ -19,4 +19,6 @@ pub enum Command {
     MoveTo(Vec<(CodeSpan, String)>),
     /// Try to process the next statement.
     Next(CodeSpan, String),
+    /// Allow bypassing the last error range reported, without removing it from the UI.
+    IgnoreError,
 }

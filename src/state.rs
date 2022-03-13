@@ -259,11 +259,13 @@ impl CoqState {
         if let Some(state_id) = self.last_processed {
             self.state_id_to_range.remove_by_left(&state_id);
 
+/*
             self.current_id = *self
                 .state_id_to_range
                 .left_values()
                 .max()
-                .unwrap_or(&self.root_id);
+                .unwrap_or(&self.root_id); */
+            self.current_id = state_id + 1;
 
             self.last_processed = None;
         }

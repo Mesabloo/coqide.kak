@@ -33,7 +33,7 @@ pub fn init<P: AsRef<Path>>(path: P) -> io::Result<Handle> {
     let config = Config::builder()
         .appender(
             Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(LevelFilter::Warn)))
+                .filter(Box::new(ThresholdFilter::new(LevelFilter::Debug)))
                 .build("stderr", Box::new(on_console)),
         )
         .appender(

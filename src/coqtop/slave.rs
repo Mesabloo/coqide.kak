@@ -214,8 +214,9 @@ impl IdeSlave {
                     .await?;
             }
             ProtocolResult::Feedback(_, _, _, Message(richpp)) => {
-                self.send_command(DisplayCommand::ColorResult(richpp))
-                    .await?;
+                //self.send_command(DisplayCommand::ColorResult(richpp))
+                //    .await?;
+                log::warn!("message: {}", richpp.strip());
                 self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Feedback(_, _, StateId(state_id), Processed) => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+from dataclasses import dataclass, field
 
 if len(sys.argv) != 4 and len(sys.argv) != 6:
     print(
@@ -20,6 +21,28 @@ def lazy_read_stdin():
             yield c
 
 
+@dataclass
+class State: pass
+@dataclass
+class StateString(State): pass
+@dataclass
+class StateStringBackslash(State): pass
+@dataclass
+class StateComment(State):
+  at_beginning_of_coq_line: bool = field(default = False)
+@dataclass
+class StateBeginComment(State):
+  at_beginning_of_coq_line: bool = field(default = False)
+@dataclass
+class StateEndComment(State):
+  at_beginning_of_coq_line: bool = field(default = False)
+@dataclass
+class StateBeginProof(State): pass
+@dataclass
+class StateEOL(State): pass
+@dataclass
+class StateBullet(State): pass
+
 _, begin_line, begin_column, command, *rem = sys.argv
 if command == "to":
     target_line, target_column = map(int, rem)
@@ -30,23 +53,6 @@ begin_line = int(begin_line)
 begin_column = int(begin_column)
 
 # TODO: handle the `to` command
-
-# Inside a string
-STATE_STRING = 0
-# Found a backslash inside a string
-STATE_STRING_BACKSLASH = STATE_STRING + 1
-# Inside a comment (comments can be nested)
-STATE_COMMENT = STATE_STRING_BACKSLASH + 1
-# Beginning parenthese of comment encountered
-STATE_BEGIN_COMMENT = STATE_COMMENT + 1
-# Ending star of comment encountered
-STATE_END_COMMENT = STATE_BEGIN_COMMENT + 1
-# Beginning of subproofs encountered
-STATE_BEGIN_PROOF = STATE_END_COMMENT + 1
-# We are inside a bullet
-STATE_BULLET = STATE_BEGIN_PROOF + 1
-# We might be at the end of a line
-STATE_EOL = STATE_BULLET + 1
 
 # The state stack, used to push/pop syntactic classes like strings, comments, etc
 states = []
@@ -89,7 +95,7 @@ for char in lazy_read_stdin():
 
     last_known_state = states[-1] if len(states) > 0 else None
 
-    if last_known_state == STATE_EOL:
+    if type(last_known_state) is StateEOL:
         if char.isspace():
             state_column -= 1
             if yield_position():
@@ -99,86 +105,85 @@ for char in lazy_read_stdin():
         last_known_state = states[-1] if len(states) > 0 else None
 
     if char == '"':
-        if last_known_state in [
-                STATE_STRING, STATE_BEGIN_COMMENT, STATE_END_COMMENT
+        if type(last_known_state) in [
+                StateString, StateBeginComment, StateEndComment
         ]:
             # If we encounter `"` and we are either in a string, starting or ending a comment
             # then just pop the last state
             states.pop()
-        elif last_known_state not in [STATE_STRING_BACKSLASH, STATE_COMMENT]:
+        elif type(last_known_state) not in [StateStringBackslash, StateComment]:
             # If the last known state is not encountering a `\` in a string, or being
             # inside a comment, then we are going inside a string
-            states.append(STATE_STRING)
-        elif last_known_state == STATE_STRING_BACKSLASH:
+            states.append(StateString())
+        elif type(last_known_state) is StateStringBackslash:
             # If the last known state is encountering a `\`, simply pop it
             states.pop()
     elif char == '(':
         # When we encounter a `(`, if we are not in a string, then try to start
         # a comment
-        if last_known_state in [STATE_BEGIN_COMMENT, STATE_END_COMMENT]:
+        if type(last_known_state) in [StateBeginComment, StateEndComment]:
             states.pop()
-        if last_known_state != STATE_STRING:
-            states.append(STATE_BEGIN_COMMENT)
-    elif char == ')' and last_known_state == STATE_END_COMMENT:
+        if type(last_known_state) is not StateString:
+            states.append(StateBeginComment(at_beginning_of_coq_line))
+    elif char == ')' and type(last_known_state) is StateEndComment:
         states.pop()
         states.pop()
+        at_beginning_of_coq_line = last_known_state.at_beginning_of_coq_line
     elif char == '*':
         # If we encounter a `*`, then:
         # - if we are inside a comment, then try starting the end of the comment
         # - if we are at the beginning of a line, then treat as a bullet
         # - if we are right after a `(`, then start a comment
-        if last_known_state == STATE_BEGIN_COMMENT:
+        if type(last_known_state) is StateBeginComment:
             states.pop()
-            states.append(STATE_COMMENT)
-        elif last_known_state == STATE_COMMENT:
-            states.append(STATE_END_COMMENT)
-        elif at_beginning_of_coq_line and last_known_state != STATE_BULLET:
-            states.append(STATE_BULLET)
+            states.append(StateComment(last_known_state.at_beginning_of_coq_line))
+        elif type(last_known_state) == StateComment:
+            states.append(StateEndComment(last_known_state.at_beginning_of_coq_line))
+        elif at_beginning_of_coq_line and type(last_known_state) is not StateBullet:
+            states.append(StateBullet())
             at_beginning_of_coq_line = True
     elif char == '.':
         # If we encounter a `.` and we are not inside a string or a comment
         # treat it as the end of a coq statement IF either the character before or the character
         # after is blank (space, tab, newline, ...)
-        if last_known_state not in [STATE_COMMENT, STATE_STRING]:
+        if type(last_known_state) not in [StateComment, StateString]:
             if not last_char.isspace():
-                states.append(STATE_EOL)
+                states.append(StateEOL())
             else:
                 at_beginning_of_coq_line = True
                 if yield_position():
                     break
-        elif last_known_state in [
-                STATE_BEGIN_COMMENT, STATE_END_COMMENT, STATE_STRING_BACKSLASH
+        elif type(last_known_state) in [
+                StateBeginComment, StateEndComment, StateStringBackslash
         ]:
             states.pop()
     elif char in ['-', '+'
-                  ] and at_beginning_of_coq_line and last_known_state not in [
-                      STATE_COMMENT, STATE_END_COMMENT, STATE_STRING,
-                      STATE_STRING_BACKSLASH
+                  ] and at_beginning_of_coq_line and type(last_known_state) not in [
+                      StateComment, StateEndComment, StateString, StateStringBackslash
                   ]:
-        if last_known_state != STATE_BULLET:
+        if type(last_known_state) is not StateBullet:
             # If we are not already in a bullet, go into it
-            states.append(STATE_BULLET)
+            states.append(StateBullet())
         at_beginning_of_coq_line = True
-    elif char == '{' and last_known_state not in [
-            STATE_STRING, STATE_COMMENT, STATE_END_COMMENT,
-            STATE_STRING_BACKSLASH
+    elif char == '{' and type(last_known_state) not in [
+            StateString, StateComment, StateEndComment, StateStringBackslash
     ]:
         # We are starting a new subproof
-        states.append(STATE_BEGIN_PROOF)
+        states.append(StateBeginProof())
         at_beginning_of_coq_line = True
         if yield_position():
             break
-    elif char == '}' and last_known_state == STATE_BEGIN_PROOF:
+    elif char == '}' and type(last_known_state) is StateBeginProof:
         # We are ending a subproof
         states.pop()
         at_beginning_of_coq_line = True
         if yield_position():
             break
-    elif last_known_state in [
-            STATE_STRING_BACKSLASH, STATE_BEGIN_COMMENT, STATE_END_COMMENT
+    elif type(last_known_state) in [
+        StateStringBackslash, StateBeginComment, StateEndComment
     ]:
         states.pop()
-    elif last_known_state == STATE_BULLET:
+    elif type(last_known_state) == StateBullet:
         state_column -= 1
         if yield_position():
             break
@@ -188,7 +193,7 @@ for char in lazy_read_stdin():
     # if we ended a comment, do not flip the variable `at_beginning_of_coq_line`
     # (we may have written `something. (*  *) - something_else`, in which case the `-` is at the beginning
     # of the statement)
-    if char == ')' and last_known_state in [STATE_END_COMMENT, STATE_COMMENT]:
+    if char == ')' and type(last_known_state) in [StateEndComment, StateComment]:
         pass
     # If we encounter a newline, do not change the beginning_of_line state
     # because we may be at the beginning of a coq statement, or in the middle.
@@ -198,7 +203,7 @@ for char in lazy_read_stdin():
     # of a coq statement anymore
     elif char not in [
             '.', ' ', '\t', '-', '*', '+', '{', '}'
-    ] and last_known_state not in [STATE_COMMENT, STATE_END_COMMENT]:
+    ] and type(last_known_state) not in [StateComment, StateEndComment]:
         at_beginning_of_coq_line = False
 
     if char == '\n':

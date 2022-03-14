@@ -88,10 +88,10 @@ Here are some erroneous or incomplete features:
 
   This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
 - Editing at the beginning of the buffer (before any processing) breaks the whole extension.
-- Comments should not cancel bullets at the beginning of a line.
 - Backtracking on error goes one step too far, needs to backtrack one by hand before.
 - Backtracking after code editing before the tip goes one step too far, needing to go one step by hand after.
 - Allow asking for hints in proofs.
+- Syntax errors are not always indicated in the error range.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

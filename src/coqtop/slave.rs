@@ -179,12 +179,12 @@ impl IdeSlave {
             }
             // No goal has been found
             ProtocolResult::Good(Optional(None)) => {
-                self.send_command(DisplayCommand::OutputGoals(Vec::new(), Vec::new()))
+                self.send_command(DisplayCommand::OutputGoals(Vec::new(), Vec::new(), Vec::new()))
                     .await?;
             }
             // Some goals found
-            ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, _)))) => {
-                self.send_command(DisplayCommand::OutputGoals(fg, bg))
+            ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, gg)))) => {
+                self.send_command(DisplayCommand::OutputGoals(fg, bg, gg))
                     .await?;
             }
             // Any other good result only refreshes the processed range

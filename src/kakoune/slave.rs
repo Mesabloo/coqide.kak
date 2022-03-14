@@ -78,7 +78,7 @@ impl KakSlave {
             RefreshProcessedRange(range) => self.refresh_processed_range(range).await,
             RefreshErrorRange(range) => self.refresh_error_range(range).await,
             ColorResult(richpp) => self.output_result(richpp).await,
-            OutputGoals(fg, bg) => self.output_goals(fg, bg).await,
+            OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await,
         }
     }
 
@@ -143,13 +143,25 @@ impl KakSlave {
         &self,
         fg: Vec<ProtocolValue>,
         bg: Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
+        gg: Vec<ProtocolValue>,
     ) -> io::Result<()> {
         let mut message: String;
         let mut colors: Vec<String> = Vec::new();
 
         if fg.is_empty() {
-            if bg.is_empty() {
-                message = "No more subgoals.".to_string();
+            if bg.is_empty() || bg.iter().all(|(lg, rg)| lg.is_empty() && rg.is_empty()) {
+                if gg.is_empty() {
+                    message = "No more subgoals.".to_string();
+                } else {
+                    message = "No more subgoals, but there are some given up goals:\n".to_string();
+                    let mut line = 3usize;
+                    for goal in gg.into_iter() {
+                        let (txt, mut cols, i) = goal_to_string(goal, line);
+                        message = format!("{}\n{}", message, txt);
+                        colors.append(&mut cols);
+                        line = i + 1;
+                    }
+                }
             } else {
                 message = "The current subgoal is complete, but there are unfinished subgoals:\n"
                     .to_string();

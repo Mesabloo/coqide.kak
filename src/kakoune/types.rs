@@ -18,5 +18,7 @@ pub enum DisplayCommand {
         Vec<ProtocolValue>,
         /// Background tasks.
         Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
+        /// Given up goals.
+        Vec<ProtocolValue>,
     ),
 }

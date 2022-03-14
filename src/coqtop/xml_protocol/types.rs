@@ -109,10 +109,13 @@ pub enum ProtocolResult {
 }
 
 /// The content of a feedback [`ProtocolResult`].
+///
+/// See here for a complete list of feedback objects:
+/// [https://github.com/coq/coq/blob/master/lib/feedback.ml]
 #[derive(Debug, Clone)]
 pub enum FeedbackContent {
     /// A simple RichPP message.
-    Message(ProtocolRichPP),
+    Message(MessageType, ProtocolRichPP),
     /// Some piece of code has been processed.
     Processed,
     /// Worker status
@@ -121,6 +124,16 @@ pub enum FeedbackContent {
     Processing(XMLNode),
     /// Some proof has been temporarily admitted
     AddedAxiom,
+}
+
+/// The level of the message sent by [`COQTOP`].
+#[derive(Debug, Clone)]
+pub enum MessageType {
+    Debug,
+    Info,
+    Notice,
+    Warning,
+    Error,
 }
 
 /// The type of pretty-printed text.

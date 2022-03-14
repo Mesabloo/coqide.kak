@@ -6,6 +6,7 @@ use super::{
         ProtocolRichPP::{self, *},
         ProtocolRichPPPart,
         ProtocolValue::{self, *},
+        MessageType::{self, *},
     },
 };
 use std::io;
@@ -194,7 +195,7 @@ impl ProtocolValue {
                     ProtocolValue::decode(xml.children[2].clone().as_node().cloned().unwrap())?;
                 // <list> of <goal>s
                 let gg =
-                    ProtocolValue::decode(xml.children[2].clone().as_node().cloned().unwrap())?;
+                    ProtocolValue::decode(xml.children[3].clone().as_node().cloned().unwrap())?;
                 // <list> of <goal>s
 
                 let fg = match fg {
@@ -435,8 +436,11 @@ impl FeedbackContent {
                 assert_decode_error(!message.children.is_empty(), || InvalidFeedbackContent)?;
                 assert_decode_error(message.children.len() >= 3, || InvalidFeedbackContent)?;
 
-                ProtocolRichPP::decode(message.children[2].as_node().cloned().unwrap())
-                    .map(FeedbackContent::Message)
+                let content =
+                    ProtocolRichPP::decode(message.children[2].as_node().cloned().unwrap())?;
+                let level = MessageType::decode(message.children[0].as_node().cloned().unwrap())?;
+
+                Ok(FeedbackContent::Message(level, content))
             }
             "workerstatus" => {
                 assert_decode_error(!xml.children.is_empty(), || InvalidFeedbackContent)?;
@@ -453,6 +457,20 @@ impl FeedbackContent {
                 ))
             }
             "addedaxiom" => Ok(FeedbackContent::AddedAxiom),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl MessageType {
+    /// Tries to decode a
+    pub fn decode(xml: XMLNode) -> io::Result<Self> {
+        match xml.attributes.get("val").unwrap().as_str() {
+            "notice" => Ok(MessageType::Notice),
+            "debug" => Ok(MessageType::Debug),
+            "info" => Ok(MessageType::Info),
+            "error" => Ok(MessageType::Error),
+            "warning" => Ok(MessageType::Warning),
             _ => unreachable!(),
         }
     }

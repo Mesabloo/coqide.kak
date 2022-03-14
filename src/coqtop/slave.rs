@@ -15,7 +15,7 @@ use tokio::{
 use tokio_util::codec::FramedRead;
 
 use crate::{
-    coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP, ProtocolRichPPPart},
+    coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP, ProtocolRichPPPart, MessageType},
     files::{goal_file, result_file},
     kakoune::types::DisplayCommand,
     logger,
@@ -193,17 +193,18 @@ impl IdeSlave {
             }
             // On fail, send the fail message to the result buffer
             ProtocolResult::Fail(_, _, richpp) => {
-                let error_range = tokio::task::block_in_place(|| -> io::Result<Option<CodeSpan>> {
-                    let mut coq_state = coq_state.lock().map_err(|err| {
-                        io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
-                    })?;
+                let error_range =
+                    tokio::task::block_in_place(|| -> io::Result<Option<CodeSpan>> {
+                        let mut coq_state = coq_state.lock().map_err(|err| {
+                            io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
+                        })?;
 
-                    let id = coq_state.get_current_state_id();
-                    let range = coq_state.range_of(id);
-                    coq_state.error(id);
-                    coq_state.backtrack_last_processed();
-                    Ok(range)
-                })?;
+                        let id = coq_state.get_current_state_id();
+                        let range = coq_state.range_of(id);
+                        coq_state.error(id);
+                        coq_state.backtrack_last_processed();
+                        Ok(range)
+                    })?;
                 self.refresh_processed(coq_state).await?;
                 self.refresh_error(error_range).await?;
 
@@ -213,10 +214,20 @@ impl IdeSlave {
                 self.send_command(DisplayCommand::ColorResult(richpp))
                     .await?;
             }
-            ProtocolResult::Feedback(_, _, _, Message(richpp)) => {
+            ProtocolResult::Feedback(
+                _,
+                _,
+                _,
+                Message(MessageType::Error | MessageType::Warning, richpp),
+            ) => {
                 //self.send_command(DisplayCommand::ColorResult(richpp))
                 //    .await?;
                 log::warn!("message: {}", richpp.strip());
+                self.refresh_processed(coq_state).await?;
+            }
+            ProtocolResult::Feedback(_, _, _, Message(_, richpp)) => {
+                self.send_command(DisplayCommand::ColorResult(richpp))
+                    .await?;
                 self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Feedback(_, _, StateId(state_id), Processed) => {

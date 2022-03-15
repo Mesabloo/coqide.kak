@@ -92,6 +92,8 @@ Here are some erroneous or incomplete features:
 - Backtracking after code editing before the tip goes one step too far, needing to go one step by hand after.
 - Allow asking for hints in proofs.
 - Syntax errors are not always indicated in the error range.
+- Add command to move cursor to tip
+- “Parse” a local `.CoqProject` file for some flags to give to `coqidetop`
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

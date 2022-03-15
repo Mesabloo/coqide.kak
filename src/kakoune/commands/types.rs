@@ -21,4 +21,6 @@ pub enum Command {
     Next(CodeSpan, String),
     /// Allow bypassing the last error range reported, without removing it from the UI.
     IgnoreError,
+    /// Ask for hints for the current proof.
+    Hints
 }

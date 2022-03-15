@@ -15,7 +15,9 @@ use tokio::{
 use tokio_util::codec::FramedRead;
 
 use crate::{
-    coqtop::xml_protocol::types::{FeedbackContent, ProtocolRichPP, ProtocolRichPPPart, MessageType},
+    coqtop::xml_protocol::types::{
+        FeedbackContent, MessageType, ProtocolRichPP, ProtocolRichPPPart,
+    },
     files::{goal_file, result_file},
     kakoune::types::DisplayCommand,
     logger,
@@ -173,14 +175,32 @@ impl IdeSlave {
 
                 self.refresh_processed(coq_state).await?;
             }
-            ProtocolResult::Good(Optional(Some(box Pair(box List(_), box _)))) => {
-                log::warn!("Unhandled response {:?}", resp);
+            ProtocolResult::Good(Optional(Some(box Pair(box List(l), box _)))) => {
+                let mut message = "Available hints:\n".to_string();
+                for vals in l {
+                    if let ProtocolValue::List(pairs) = vals {
+                        for pair in pairs {
+                            if let Pair(_, box ProtocolValue::Str(txt)) = pair {
+                                message = format!("{}\n{}", message, txt);
+                            }
+                        }
+                    }
+                }
+                self.send_command(DisplayCommand::ColorResult(ProtocolRichPP::RichPP(vec![
+                    ProtocolRichPPPart::Raw(message),
+                ])))
+                .await?;
+                //log::warn!("Unhandled response {:?}", resp);
                 // TODO: output hints in all option/pair/list/pair/string/::text
             }
             // No goal has been found
             ProtocolResult::Good(Optional(None)) => {
-                self.send_command(DisplayCommand::OutputGoals(Vec::new(), Vec::new(), Vec::new()))
-                    .await?;
+                self.send_command(DisplayCommand::OutputGoals(
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                ))
+                .await?;
             }
             // Some goals found
             ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, gg)))) => {

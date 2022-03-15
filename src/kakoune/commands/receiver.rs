@@ -68,8 +68,8 @@ impl CommandReceiver {
         let res = loop {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok::<_, io::Error>(()),
-                Ok(cmd) = Command::parse_from(&mut pipe) => {
-                    match cmd {
+                cmd = Command::parse_from(&mut pipe) => {
+                    match cmd? {
                         None => break Ok::<_, io::Error>(()),
                         Some(None) => {
                             log::warn!("Junk byte ignored from stream");

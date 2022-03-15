@@ -6,6 +6,7 @@
 # - coqide-next:       try to process the next Coq statement
 # - coqide-previous:   try to go back to the last processed state
 # - coqide-move-to:    move to the end of the next Coq statement (from the main cursor) and try to process until this point
+# - coqide-hints:      output some hints in the result buffer
 # ------- Colors
 # - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
 # - coqide_errors:     a face to highlight errors returned by CoqIDE
@@ -336,6 +337,11 @@ define-command -docstring "
   }
 }
 
+define-command -docstring "
+  Get hints for the current proof from the underlyign coqidetop process/
+" -params 0 coqide-hints %{
+  coqide-send-to-process 'hints'
+}
 
 define-command -docstring "
   Cancel the lastly processed Coq statement.  

@@ -108,6 +108,7 @@ parser! {
             attempt(parse_move_to()),
             attempt(parse_next()),
             attempt(parse_quit()),
+            attempt(parse_hints()),
             attempt(parse_ignore_error()),
             ignore_byte(),
         )))
@@ -239,13 +240,27 @@ parser! {
     type PartialState = AnyPartialState;
 
     fn parse_ignore_error['a, Input]()(Input) -> Option<Command>
-      where [
-          Input: RangeStream<Token = u8, Range = &'a [u8]>,
-          Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-      ]
-      {
-          any_partial_state(range(&b"ignore-error\n"[..])).map(|_| Some(Command::IgnoreError))
-      }
+    where [
+        Input: RangeStream<Token = u8, Range = &'a [u8]>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+    ]
+    {
+        any_partial_state(range(&b"ignore-error\n"[..])).map(|_| Some(Command::IgnoreError))
+    }
+}
+
+parser! {
+    type PartialState = AnyPartialState;
+
+    fn parse_hints['a, Input]()(Input) -> Option<Command>
+    where [
+        Input: RangeStream<Token = u8, Range = &'a [u8]>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+    ]
+    {
+        // FIXME: somehow this is never parsed directly, only on the second try...
+        any_partial_state(range(&b"hints\n"[..])).map(|_| Some(Command::Hints))
+    }
 }
 
 parser! {

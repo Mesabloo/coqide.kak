@@ -127,6 +127,9 @@ impl CommandProcessor {
                     // after that, the error state is set to `Ok` so there should be no more processing
                 }
             }
+            Command::Hints => {
+                self.process_hints().await?
+            }
             c => log::info!(
                 "Ignoring command {:?} (maybe it is not ok to process it: {:?})",
                 c,
@@ -279,6 +282,13 @@ impl CommandProcessor {
             self.send(ProtocolCall::Goal).await?;
             state_id += 1;
         }
+
+        Ok(())
+    }
+
+    /// Process a [`Command::Hints`] by sending a [`ProtocolCall::Hints`] to the [`COQTOP`] process.
+    async fn process_hints(&mut self) -> io::Result<()> {
+        self.send(ProtocolCall::Hints).await?;
 
         Ok(())
     }

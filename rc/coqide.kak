@@ -7,6 +7,7 @@
 # - coqide-previous:   try to go back to the last processed state
 # - coqide-move-to:    move to the end of the next Coq statement (from the main cursor) and try to process until this point
 # - coqide-hints:      output some hints in the result buffer
+# - coqide-goto-tip:   move cursor to processed tip
 # ------- Colors
 # - coqide_processed:  a specific face to highlight what has been processed by CoqIDE
 # - coqide_errors:     a face to highlight errors returned by CoqIDE
@@ -529,4 +530,16 @@ define-command -docstring "
   unset-option buffer coqide_socat_pid
   unset-option buffer coqide_pid 
   unset-option buffer coqide_processed_range
+}
+        
+define-command -docstring "
+  Move the main cursor to the tip of the processed range.
+" -params 0 coqide-goto-tip %{
+  execute-keys %sh{
+    IFS=' .,|' read -r _ _ _ eline ecol _ <<< "$kak_opt_coqide_processed_range"
+    eline=${eline:-1}
+    ecol=$((${ecol:-1} - 1))
+
+    echo "${eline}ggh${ecol}l"
+  }
 }

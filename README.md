@@ -81,7 +81,7 @@ The codebase is at some locations pretty ugly (e.g. when decoding XML nodes to R
 However, most of it should be at last a little bit documented.
 
 Here are some erroneous or incomplete features:
-- Add ranges instead of modifying a global range
+- Add ranges instead of modifying a global range.
 - Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic).
 - Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
   A workaround is simply to go back 2-3 states and retry processing.
@@ -92,8 +92,7 @@ Here are some erroneous or incomplete features:
 - Backtracking after code editing before the tip goes one step too far, needing to go one step by hand after.
 - Allow asking for hints in proofs.
 - Syntax errors are not always indicated in the error range.
-- Add command to move cursor to tip
-- “Parse” a local `.CoqProject` file for some flags to give to `coqidetop`
+- “Parse” a local `.CoqProject` file for some flags to give to `coqidetop`.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

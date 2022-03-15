@@ -158,7 +158,6 @@ impl IdeSlave {
         use FeedbackContent::*;
         use ProtocolValue::*;
 
-        self.refresh_error(None).await?;
         match resp {
             // Result of an Init or Add call
             ProtocolResult::Good(StateId(state_id))
@@ -173,6 +172,7 @@ impl IdeSlave {
                     Ok(())
                 })?;
 
+                self.refresh_error(None).await?;
                 self.refresh_processed(coq_state).await?;
             }
             ProtocolResult::Good(Optional(Some(box Pair(box List(l), box _)))) => {
@@ -209,6 +209,7 @@ impl IdeSlave {
             }
             // Any other good result only refreshes the processed range
             ProtocolResult::Good(_) => {
+                self.refresh_error(None).await?;
                 self.refresh_processed(coq_state).await?;
             }
             // On fail, send the fail message to the result buffer

@@ -2,11 +2,11 @@ use super::{
     parser::{XMLDecoder, XMLNode},
     types::{
         FeedbackContent,
+        MessageType::{self, *},
         ProtocolResult::{self, *},
         ProtocolRichPP::{self, *},
         ProtocolRichPPPart,
         ProtocolValue::{self, *},
-        MessageType::{self, *},
     },
 };
 use std::io;
@@ -322,8 +322,10 @@ impl ProtocolResult {
                             })?
                             .clone();
                         let richpp = ProtocolRichPP::decode(richpp_elem)?;
+                        let state_id =
+                            ProtocolValue::decode(xml.children[0].as_node().cloned().unwrap())?;
 
-                        Ok(Fail(loc_s, loc_e, richpp))
+                        Ok(Fail(loc_s, loc_e, state_id, richpp))
                     }
                     _ => Err(io::Error::new(
                         io::ErrorKind::InvalidData,

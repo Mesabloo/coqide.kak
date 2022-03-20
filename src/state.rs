@@ -259,7 +259,7 @@ impl CoqState {
         if let Some(state_id) = self.last_processed {
             self.state_id_to_range.remove_by_left(&state_id);
 
-/*
+            /*
             self.current_id = *self
                 .state_id_to_range
                 .left_values()
@@ -292,5 +292,10 @@ impl CoqState {
     /// Returns the range processed (or being processed) for the given state ID.
     pub fn range_of(&self, state_id: i64) -> Option<CodeSpan> {
         self.state_id_to_range.get_by_left(&state_id).cloned()
+    }
+
+    pub fn backtrack_to_state(&mut self, state_id: i64) {
+        self.state_id_to_range.retain(|&l, &_| l <= state_id);
+        self.current_id = state_id + 1;
     }
 }

@@ -88,6 +88,8 @@ pub enum ProtocolResult {
         Option<i64>,
         /// The optional column number where the error occured.
         Option<i64>,
+        /// The state ID to go back to on error.
+        ProtocolValue,
         /// An associated error message describing what has gone wrong.
         ProtocolRichPP,
     ),

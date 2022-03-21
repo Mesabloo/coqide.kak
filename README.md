@@ -93,6 +93,7 @@ Here are some erroneous or incomplete features:
 - Allow asking for hints in proofs.
 - Syntax errors are not always indicated in the error range.
 - “Parse” a local `.CoqProject` file for some flags to give to `coqidetop`.
+- Handle `filedependency` feedback contents.
 - ... and some other things that I did not see.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

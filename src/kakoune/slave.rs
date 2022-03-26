@@ -9,11 +9,11 @@ use tokio::{
 use crate::{
     coqtop::xml_protocol::types::{ProtocolRichPP, ProtocolRichPPPart, ProtocolValue},
     files::{goal_file, result_file},
-    kakoune::command_line::kak,
-    state::CodeSpan,
+    kakoune::command_line::kak, codespan::CodeSpan,
 };
 
-use super::types::DisplayCommand;
+use super::commands::types::DisplayCommand;
+
 
 /// A simple abstraction of Kakoune used to send commands to it.
 pub struct KakSlave {

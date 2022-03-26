@@ -1,8 +1,10 @@
-use crate::state::CodeSpan;
+use crate::{
+    codespan::CodeSpan,
+    coqtop::xml_protocol::types::{ProtocolRichPP, ProtocolValue},
+};
 
 #[derive(Debug)]
-/// A command received from Kakoune.
-pub enum Command {
+pub enum KakouneCommand {
     /// Initialise the daemon.
     Init,
     /// Stop the daemon.
@@ -22,5 +24,25 @@ pub enum Command {
     /// Allow bypassing the last error range reported, without removing it from the UI.
     IgnoreError,
     /// Ask for hints for the current proof.
-    Hints
+    Hints,
+}
+
+/// The type of commands that can be sent back to Kakoune.
+#[derive(Debug, Clone)]
+pub enum DisplayCommand {
+    /// Refresh the processed range.
+    RefreshProcessedRange(CodeSpan),
+    /// Refresh the error range.
+    RefreshErrorRange(Option<CodeSpan>),
+    /// Output the result with colors.
+    ColorResult(ProtocolRichPP),
+    /// Show some goals.
+    OutputGoals(
+        /// Foreground (focused) goals.
+        Vec<ProtocolValue>,
+        /// Background tasks.
+        Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
+        /// Given up goals.
+        Vec<ProtocolValue>,
+    ),
 }

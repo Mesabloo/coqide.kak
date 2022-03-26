@@ -1,42 +1,36 @@
 #![feature(box_patterns)]
-#![feature(async_closure)]
-#![feature(io_error_more)]
 
-use std::{env, path::Path, process::exit, sync::{Arc, Mutex}};
+use std::{env, path::Path, process::exit};
 
 use async_signals::Signals;
+use coqtop::{
+    adapter::SynchronizedState,
+    feedback_queue::{Feedback, FeedbackQueue},
+    slave::CoqtopSlave,
+    xml_protocol::types::{ProtocolCall, ProtocolResult},
+};
+use files::{goal_file, result_file};
+use kakoune::{
+    commands::{
+        receiver::CommandReceiver,
+        types::{DisplayCommand, KakouneCommand},
+    },
+    slave::KakSlave,
+};
 use tokio::{
     fs::File,
-    io,
     sync::{mpsc, watch},
 };
 use tokio_stream::StreamExt;
 
-use crate::{
-    coqtop::{slave::IdeSlave, xml_protocol::types::ProtocolCall},
-    files::{goal_file, result_file},
-    kakoune::{
-        commands::{processor::CommandProcessor, receiver::CommandReceiver, types::Command},
-        slave::KakSlave,
-        types::DisplayCommand,
-    },
-    state::CoqState,
-};
-
-/// Communication utilities for `coqidetop` as well as a custom XML parser
-/// for its protocol.
+mod codespan;
 mod coqtop;
-/// Additional helper functions to retrieve paths to important files.
 mod files;
-/// Anything related to communicating with Kakoune.
 mod kakoune;
-///
 mod logger;
-/// Defines the state of the daemon.
-mod state;
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
+pub async fn main() {
     let args = env::args().collect::<Vec<_>>();
     if args.len() != 4 {
         eprintln!(
@@ -60,37 +54,38 @@ async fn main() -> io::Result<()> {
         let path = fun(&tmp_dir);
         let path = Path::new(&path);
         if !Path::exists(path) {
-            File::create(&path).await?;
+            File::create(&path).await.unwrap();
         }
     }
 
     // Initialise logging
-    let _handle = logger::init(logger::log_file(&tmp_dir))?;
+    let _handle = logger::init(logger::log_file(&tmp_dir)).unwrap();
 
     let (stop_tx, stop_rx) = watch::channel(());
 
-    // - `pipe_tx` is used to transmit commands from the pipe file to the internal channel
-    // - `pipe_rx` is the receiving end used to get those commands
-    let (pipe_tx, pipe_rx) = mpsc::unbounded_channel::<Command>();
-    //
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<KakouneCommand>();
     let (call_tx, call_rx) = mpsc::unbounded_channel::<ProtocolCall>();
-    //
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<DisplayCommand>();
+    let (response_tx, response_rx) = mpsc::unbounded_channel::<ProtocolResult>();
+    let (disp_cmd_tx, disp_cmd_rx) = mpsc::unbounded_channel::<DisplayCommand>();
+    let (feedback_tx, feedback_rx) = mpsc::unbounded_channel::<Feedback>();
 
-    let coq_state = Arc::new(Mutex::new(CoqState::new()));
-
-    let mut ideslave = IdeSlave::new(call_rx, cmd_tx.clone(), &tmp_dir, coq_file.clone()).await?;
-    let mut kakoune_command_receiver = CommandReceiver::new(pipe_tx);
-    let mut kakoune_command_processor = CommandProcessor::new(
-        pipe_rx,
+    let mut coqtop_slave = CoqtopSlave::new(call_rx, response_tx, &tmp_dir, coq_file.clone())
+        .await
+        .unwrap();
+    let mut coqtop_adapter = SynchronizedState::new(
         call_tx,
-        cmd_tx.clone(),
-        coq_state.clone(),
-        goal_file(&tmp_dir),
-        result_file(&tmp_dir),
-    )
-    .await?;
-    let mut kakslave = KakSlave::new(cmd_rx, kak_session.clone(), coq_file.clone(), &tmp_dir);
+        response_rx,
+        feedback_tx,
+        cmd_rx,
+        disp_cmd_tx.clone(),
+        kak_session.clone(),
+        coq_file.clone(),
+    );
+    let mut kakoune_receiver =
+        CommandReceiver::new(cmd_tx, kak_session.clone(), &tmp_dir, coq_file.clone());
+    let mut kakoune_slave =
+        KakSlave::new(disp_cmd_rx, kak_session.clone(), coq_file.clone(), &tmp_dir);
+    let mut feedback_queue = FeedbackQueue::new(feedback_rx, disp_cmd_tx.clone());
 
     let mut signals = Signals::new(vec![libc::SIGINT]).unwrap();
     loop {
@@ -99,18 +94,18 @@ async fn main() -> io::Result<()> {
                 stop_tx.send(()).unwrap();
                 break Ok(());
             }
-            res = ideslave.process(coq_state.clone(), stop_rx.clone()) => break res,
-            res = kakoune_command_receiver.process(kak_session.clone(), tmp_dir.clone(), coq_file.clone(), stop_rx.clone()) => break res,
-            res = kakoune_command_processor.process(stop_rx.clone()) => break res,
-            res = kakslave.process(stop_rx.clone()) => break res,
+            res = coqtop_slave.process(stop_rx.clone()) => break res,
+            res = coqtop_adapter.process(stop_rx.clone()) => break res,
+            res = kakoune_receiver.process(stop_rx.clone()) => break res,
+            res = kakoune_slave.process(stop_rx.clone()) => break res,
+            res = feedback_queue.process(stop_rx.clone()) => break res,
             else => {}
         }
-    }.unwrap();
+    }
+    .unwrap();
 
-    kakoune_command_receiver.stop().await?;
-    ideslave.quit().await?;
+    kakoune_receiver.stop().await.unwrap();
+    coqtop_slave.quit().await.unwrap();
 
     drop(signals);
-
-    Ok(())
 }

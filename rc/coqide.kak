@@ -106,6 +106,10 @@ declare-option -docstring "
   Ranges to highlight in the goal buffer.
 " -hidden range-specs coqide_goal_highlight
 
+declare-option -docstring "
+  Whether CoqIDE is allowed to go further sending commands or not
+" -hidden bool coqide_can_go_further true
+
 
 define-command -docstring "
   Start `coqide-kak` for the current buffer.  
@@ -162,10 +166,29 @@ define-command -docstring "
 }
 
 define-command -docstring "
+  Wait until the daemon is ready to handle the next command sent.
+" -hidden -params 0 coqide-wait-until-ready %{
+  evaluate-commands %sh{
+    if [ "${kak_opt_coqide_can_go_further:-true}" != "true" ]; then
+      echo "info 'CoqIDE is not yet ready to handle the next command.
+Please wait...'"
+    fi
+  }
+  evaluate-commands %sh{
+    while [ "$kak_opt_coqide_can_go_further" != "true" ]; do
+      sleep 1
+    done
+  }
+}
+
+define-command -docstring "
   Update the state of the highlighter when new text is added before its tip.
   Does nothing if the text inserted is after the tip.
 " -hidden -params 0 coqide-on-text-change %{
   evaluate-commands %sh{
+    echo "coqide-wait-until-ready"
+    echo "set-option buffer coqide_can_go_further false"
+    
     IFS=" .,|" read -r _ _ _ eline ecol _ <<< "$kak_opt_coqide_processed_range"
     eline=${eline:-1}
     ecol=${ecol:-1}
@@ -204,6 +227,8 @@ define-command -docstring "
   before the end of the current tip).
 " -hidden -params 2 coqide-invalidate-state %{
   evaluate-commands -draft -save-regs "/" %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
     try %{ execute-keys "$[ $kak_main_reg_hash -eq 1 ]<ret>" }
     coqide-send-to-process "rewind-to %arg{1} %arg{2}"
   }
@@ -212,12 +237,21 @@ define-command -docstring "
 define-command -docstring "
   
 " -hidden -params 0 coqide-invalidate-error %{
-  coqide-send-to-process "ignore-error"
+  evaluate-commands %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
+    coqide-send-to-process "ignore-error"
+  }
 }
 
 define-command -docstring "
   Move to the end of the next Coq statement if cursor does not point to a `.`, else send until cursor.
 " -params 0 coqide-move-to %{
+  evaluate-commands %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
+  }
+  
   try %{
     declare-option -hidden int coqide_move_line0
     declare-option -hidden int coqide_move_col0
@@ -341,18 +375,31 @@ define-command -docstring "
 define-command -docstring "
   Get hints for the current proof from the underlyign coqidetop process/
 " -params 0 coqide-hints %{
-  coqide-send-to-process 'hints'
+  evaluate-commands %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
+    coqide-send-to-process 'hints'
+  }
 }
 
 define-command -docstring "
   Cancel the lastly processed Coq statement.  
 " -params 0 coqide-previous %{
-  coqide-send-to-process 'previous'
+  evaluate-commands %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
+    coqide-send-to-process 'previous'
+  }
 }
 
 define-command -docstring "
   Send the next Coq statement.
 " -params 0 coqide-next %{
+  evaluate-commands %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
+  }
+  
   try %{
     declare-option -hidden int coqide_next_line0
     declare-option -hidden int coqide_next_col0
@@ -434,6 +481,11 @@ define-command -docstring "
 define-command -docstring "
   Send a query directly to the underlying `coqidetop` process, in a disposable context.
 " -params 0 coqide-query %{
+  evaluate-commands %{
+    coqide-wait-until-ready
+    set-option buffer coqide_can_go_further false
+  }
+  
   prompt 'Query:' %{
     coqide-send-to-process %sh{ echo "query \"$(sed 's/"/\\"/g' <<< "$kak_text")\"" }
   }

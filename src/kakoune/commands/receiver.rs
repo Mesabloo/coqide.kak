@@ -6,19 +6,33 @@ use tokio::{
 
 use crate::{files::command_file, kakoune::command_line::kak};
 
-use super::types::Command;
+use super::types::KakouneCommand;
 
 /// A command receiver, streaming a Unix socket to an unbounded channel.
 pub struct CommandReceiver {
     /// The transmitting end of the unbounded channel, used to send user commands to
     /// the command processor.
-    pipe_tx: mpsc::UnboundedSender<Command>,
+    pipe_tx: mpsc::UnboundedSender<KakouneCommand>,
+
+    kak_session: String,
+    tmp_dir: String,
+    coq_file: String,
 }
 
 impl CommandReceiver {
     /// Constructs a new command receiver.
-    pub fn new(pipe_tx: mpsc::UnboundedSender<Command>) -> Self {
-        Self { pipe_tx }
+    pub fn new(
+        pipe_tx: mpsc::UnboundedSender<KakouneCommand>,
+        kak_session: String,
+        tmp_dir: &String,
+        coq_file: String,
+    ) -> Self {
+        Self {
+            pipe_tx,
+            kak_session,
+            tmp_dir: tmp_dir.clone(),
+            coq_file,
+        }
     }
 
     /// Tries to receive user commands from a Unix socket.
@@ -27,20 +41,14 @@ impl CommandReceiver {
     /// dropped at the end of this function.
     ///
     /// Additional calls are performed to correctly initialize Kakoune and connect it to the socket.
-    pub async fn process(
-        &mut self,
-        kak_session: String,
-        tmp_dir: String,
-        coq_file: String,
-        mut stop_rx: watch::Receiver<()>,
-    ) -> io::Result<()> {
-        let pipe_listener = UnixListener::bind(command_file(&tmp_dir))?;
+    pub async fn process(&mut self, mut stop_rx: watch::Receiver<()>) -> io::Result<()> {
+        let pipe_listener = UnixListener::bind(command_file(&self.tmp_dir))?;
 
         log::debug!("Binding unix socket in /tmp directory");
 
         // Populate file descriptor 4 with connection to unix socket
         let populate_fd = kak(
-            &kak_session,
+            &self.kak_session,
             format!(
                 r#"evaluate-commands -buffer '{0}' %{{ coqide-populate-fd4 }}
                 evaluate-commands -buffer '{0}' %{{
@@ -51,7 +59,7 @@ impl CommandReceiver {
                   edit! -scratch "%opt{{coqide_goal_buffer}}"
                   add-highlighter buffer/coqide_goal ranges coqide_goal_highlight
                 }}"#,
-                coq_file
+                self.coq_file
             ),
         );
         let (kak_res, pipe) = tokio::join!(populate_fd, pipe_listener.accept());
@@ -62,13 +70,13 @@ impl CommandReceiver {
 
         // Initialize the internal process
         self.pipe_tx
-            .send(Command::Init)
+            .send(KakouneCommand::Init)
             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
 
         let res = loop {
             tokio::select! {
                 Ok(_) = stop_rx.changed() => break Ok::<_, io::Error>(()),
-                cmd = Command::parse_from(&mut pipe) => {
+                cmd = KakouneCommand::parse_from(&mut pipe) => {
                     match cmd? {
                         None => break Ok::<_, io::Error>(()),
                         Some(None) => {

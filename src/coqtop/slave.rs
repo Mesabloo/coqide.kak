@@ -19,9 +19,7 @@ use crate::{
         FeedbackContent, MessageType, ProtocolRichPP, ProtocolRichPPPart,
     },
     files::{goal_file, result_file},
-    kakoune::types::DisplayCommand,
     logger,
-    state::{CodeSpan, CoqState, ErrorState},
 };
 
 use super::xml_protocol::{
@@ -33,7 +31,7 @@ use super::xml_protocol::{
 pub const COQTOP: &'static str = "coqidetop";
 
 /// The structure encapsulating all communications with the underlying [`COQTOP`] process.
-pub struct IdeSlave {
+pub struct CoqtopSlave {
     /// The main channel where [`COQTOP`] sends its responses.
     //main_r: TcpStream,
     /// The main channel to send commands (calls, see [`ProtocolCall`]) to [`COQTOP`].
@@ -47,21 +45,17 @@ pub struct IdeSlave {
     coqidetop: Child,
     /// The receiving end of a channel used to transmit protocol calls to send to [`COQTOP`].
     call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
-    /// The transmitting end of a channel to send commands to Kakoune.
-    cmd_tx: mpsc::UnboundedSender<DisplayCommand>,
-    /// The file where all results are written.
-    result_file: File,
-    /// The file where goals are written.
-    goal_file: File,
+    /// The sending end of a channel used to transmit responses from [`COQTOP`].
+    response_tx: mpsc::UnboundedSender<ProtocolResult>,
 
     reader: FramedRead<ChildStdout, XMLDecoder>,
 }
 
-impl IdeSlave {
-    /// Creates a new [`IdeSlave`] by spawning 2 or 4 TCP sockets as well as a [`COQTOP`] process.
+impl CoqtopSlave {
+    /// Creates a new [`CoqtopSlave`] by spawning 2 or 4 TCP sockets as well as a [`COQTOP`] process.
     pub async fn new(
         call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
-        cmd_tx: mpsc::UnboundedSender<DisplayCommand>,
+        response_tx: mpsc::UnboundedSender<ProtocolResult>,
         tmp_dir: &String,
         topfile: String,
     ) -> io::Result<Self> {
@@ -92,9 +86,6 @@ impl IdeSlave {
             coqidetop.id().unwrap_or(0)
         );
 
-        let result_file = File::create(result_file(&tmp_dir)).await?;
-        let goal_file = File::create(goal_file(&tmp_dir)).await?;
-
         let reader = xml_decoder(main_r);
 
         Ok(Self {
@@ -102,9 +93,7 @@ impl IdeSlave {
             main_w,
             coqidetop,
             call_rx,
-            cmd_tx,
-            result_file,
-            goal_file,
+            response_tx,
             reader,
         })
     }
@@ -126,7 +115,6 @@ impl IdeSlave {
     ///   - else no special treatment is reserved, therefore we can ignore
     pub async fn process(
         &mut self,
-        coq_state: Arc<Mutex<CoqState>>,
         mut stop_rx: watch::Receiver<()>,
     ) -> io::Result<()> {
         loop {
@@ -137,7 +125,7 @@ impl IdeSlave {
 
                     log::debug!("Received response `{:?}` from {}", resp, COQTOP);
 
-                    self.process_response(coq_state.clone(), resp).await?;
+                    self.response_tx.send(resp).unwrap();
                 }
                 Some(call) = self.call_rx.recv() => {
                     let encoded = call.encode();
@@ -147,163 +135,6 @@ impl IdeSlave {
                 }
             }
         }
-    }
-
-    /// Tries to process a response from [`COQTOP`] by modyfing the current daemon state.
-    async fn process_response(
-        &mut self,
-        coq_state: Arc<Mutex<CoqState>>,
-        resp: ProtocolResult,
-    ) -> io::Result<()> {
-        use FeedbackContent::*;
-        use ProtocolValue::*;
-
-        match resp {
-            // Result of an Init or Add call
-            ProtocolResult::Good(StateId(state_id))
-            | ProtocolResult::Good(Pair(box StateId(state_id), box _)) => {
-                tokio::task::block_in_place(|| -> io::Result<()> {
-                    let mut coq_state = coq_state.lock().map_err(|err| {
-                        io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
-                    })?;
-
-                    coq_state.set_current_state_id(state_id);
-                    coq_state.ok();
-                    Ok(())
-                })?;
-
-                self.refresh_error(None).await?;
-                self.refresh_processed(coq_state).await?;
-            }
-            ProtocolResult::Good(Optional(Some(box Pair(box List(l), box _)))) => {
-                let mut message = "Available hints:\n".to_string();
-                for vals in l {
-                    if let ProtocolValue::List(pairs) = vals {
-                        for pair in pairs {
-                            if let Pair(_, box ProtocolValue::Str(txt)) = pair {
-                                message = format!("{}\n{}", message, txt);
-                            }
-                        }
-                    }
-                }
-                self.send_command(DisplayCommand::ColorResult(ProtocolRichPP::RichPP(vec![
-                    ProtocolRichPPPart::Raw(message),
-                ])))
-                .await?;
-                //log::warn!("Unhandled response {:?}", resp);
-                // TODO: output hints in all option/pair/list/pair/string/::text
-            }
-            // No goal has been found
-            ProtocolResult::Good(Optional(None)) => {
-                self.send_command(DisplayCommand::OutputGoals(
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                ))
-                .await?;
-            }
-            // Some goals found
-            ProtocolResult::Good(Optional(Some(box ProtocolValue::Goals(fg, bg, _, gg)))) => {
-                self.send_command(DisplayCommand::OutputGoals(fg, bg, gg))
-                    .await?;
-            }
-            // Any other good result only refreshes the processed range
-            ProtocolResult::Good(_) => {
-                self.refresh_error(None).await?;
-                self.refresh_processed(coq_state).await?;
-            }
-            // On fail, send the fail message to the result buffer
-            ProtocolResult::Fail(_, _, richpp) => {
-                let error_range =
-                    tokio::task::block_in_place(|| -> io::Result<Option<CodeSpan>> {
-                        let mut coq_state = coq_state.lock().map_err(|err| {
-                            io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
-                        })?;
-
-                        let id = coq_state.get_current_state_id();
-                        let range = coq_state.range_of(id);
-                        coq_state.error(id);
-                        coq_state.backtrack_last_processed();
-                        Ok(range)
-                    })?;
-                self.refresh_processed(coq_state).await?;
-                self.refresh_error(error_range).await?;
-
-                // NOTE: should we really ignore this error? sometimes it seems a `message` feedback
-                // is also sent along with it
-
-                self.send_command(DisplayCommand::ColorResult(richpp))
-                    .await?;
-            }
-            ProtocolResult::Feedback(
-                _,
-                _,
-                _,
-                Message(MessageType::Error | MessageType::Warning, richpp),
-            ) => {
-                //self.send_command(DisplayCommand::ColorResult(richpp))
-                //    .await?;
-                log::warn!("message: {}", richpp.strip());
-                self.refresh_processed(coq_state).await?;
-            }
-            ProtocolResult::Feedback(_, _, _, Message(_, richpp)) => {
-                self.send_command(DisplayCommand::ColorResult(richpp))
-                    .await?;
-                self.refresh_processed(coq_state).await?;
-            }
-            ProtocolResult::Feedback(_, _, StateId(state_id), Processed) => {
-                tokio::task::block_in_place(|| -> io::Result<()> {
-                    let mut coq_state = coq_state.lock().map_err(|err| {
-                        io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err))
-                    })?;
-
-                    coq_state.set_current_state_id(state_id);
-                    coq_state.set_last_processed(state_id);
-                    Ok(())
-                })?;
-
-                self.refresh_processed(coq_state).await?;
-            }
-            ProtocolResult::Feedback(_, _, _, _) => {
-                log::warn!("Unhandled response {:?}", resp);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Writes a message to the goal buffer, overwriting everything that was previously in it.
-    async fn output_to_goals(&mut self, msg: String) -> io::Result<()> {
-        self.goal_file.set_len(0).await?;
-        self.goal_file.seek(SeekFrom::Start(0)).await?;
-        self.goal_file.write_all(msg.as_bytes()).await
-    }
-
-    /// Sends a command through the command channel to Kakoune.
-    async fn send_command(&self, cmd: DisplayCommand) -> io::Result<()> {
-        self.cmd_tx
-            .send(cmd)
-            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))
-    }
-
-    /// Refreshes the currently processed range in Kakoune.
-    async fn refresh_processed(&self, coq_state: Arc<Mutex<CoqState>>) -> io::Result<()> {
-        let range = tokio::task::block_in_place(|| -> io::Result<CodeSpan> {
-            let coq_state = coq_state
-                .lock()
-                .map_err(|err| io::Error::new(io::ErrorKind::Deadlock, format!("{:?}", err)))?;
-
-            Ok(coq_state.processed_range())
-        })?;
-
-        self.send_command(DisplayCommand::RefreshProcessedRange(range))
-            .await
-    }
-
-    /// Refreshes the current error in Kakoune.
-    async fn refresh_error(&self, error_range: Option<CodeSpan>) -> io::Result<()> {
-        self.send_command(DisplayCommand::RefreshErrorRange(error_range))
-            .await
     }
 
     /// Drops the TCP sockets as well as the [`COQTOP`] process.
@@ -318,27 +149,6 @@ impl IdeSlave {
         Ok(())
     }
 }
-
-// fn goal_to_string(goal: ProtocolValue) -> String {
-//     match goal {
-//         ProtocolValue::Goal(_, hyps, ccl) => {
-//             let mut output = String::new();
-//             for ProtocolRichPP::Raw(hyp) in hyps {
-//                 output += hyp.as_str();
-//                 output += "\n";
-//             }
-//             output += "────────────────────────────────────────────────────\n";
-//             match ccl {
-//                 ProtocolRichPP::Raw(ccl) => {
-//                     output += ccl.as_str();
-//                     output += "\n";
-//                 }
-//             }
-//             output
-//         }
-//         _ => String::new(),
-//     }
-// }
 
 /// Creates a new [`TcpListener`] listening on `127.0.0.1:0`, and returns both the
 /// listener and the port it is listening on.
@@ -364,7 +174,7 @@ async fn coqidetop<const N: usize>(
         .args(flags)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        //.stdout(std::fs::File::create(logger::log_file(&tmp_dir))?)
+        //.stderr(std::fs::File::create(logger::log_file(&tmp_dir))?)
         .kill_on_drop(true)
         .spawn()
 }

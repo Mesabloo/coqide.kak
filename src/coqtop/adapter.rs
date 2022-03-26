@@ -89,7 +89,7 @@ impl SynchronizedState {
         match cmd {
             Init => self.process_init().await?,
             Quit => self.process_quit().await?,
-            Previous => todo!(),
+            Previous => self.process_previous().await?,
             RewindTo(_, _) => todo!(),
             Query(_) => todo!(),
             MoveTo(_) => todo!(),
@@ -135,9 +135,17 @@ impl SynchronizedState {
             .await
     }
 
+    async fn process_previous(&mut self) -> io::Result<()> {
+        let old_state_id = self.current_state_id - 1;
+        self.state_id_to_range.retain(|id, _| id < &old_state_id);
+        self.current_state_id = std::cmp::max(old_state_id, 1);
+        self.send_call(ProtocolCall::EditAt(self.current_state_id))
+            .await
+    }
+
     // ------------------------------------------------
 
-    //https://coq.github.io/doc/master/api/coqide-server/Interface/index.html
+    //https://coq.github.io/doc/V8.13.2/api/coqide-server/Interface/index.html
 
     async fn process_response(&mut self, resp: ProtocolResult) -> io::Result<()> {
         use ProtocolResult::*;
@@ -188,6 +196,11 @@ impl SynchronizedState {
                 self.allow_processing_commands().await?;
             }
             _ => {
+                self.send_disp(DisplayCommand::RefreshProcessedRange(self.current_range()))
+                    .await?;
+                self.error = None;
+                self.send_disp(DisplayCommand::RefreshErrorRange(None))
+                    .await?;
                 self.allow_processing_commands().await?;
             }
         }
@@ -214,7 +227,9 @@ impl SynchronizedState {
             }
         }
 
-        self.current_state_id = state_id;
+        if state_id > 0 {
+            self.current_state_id = state_id;
+        }
         self.allow_processing_commands().await?;
         self.send_disp(DisplayCommand::RefreshProcessedRange(self.current_range()))
             .await?;

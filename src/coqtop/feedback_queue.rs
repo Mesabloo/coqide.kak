@@ -44,7 +44,7 @@ impl FeedbackQueue {
                             .send(DisplayCommand::ColorResult(message))
                             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
                     } else {
-                        log::debug!("{:?}", message.strip());
+                        log::debug!("{}", message.strip());
                     }
                 }
                 FeedbackContent::Processed => {},

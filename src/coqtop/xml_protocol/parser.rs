@@ -2,7 +2,7 @@ use bytes::{Buf, BytesMut};
 use combine::{
     attempt, choice, easy, from_str, many, many1, parser,
     parser::{
-        byte::{self, alpha_num, byte, space, take_until_byte},
+        byte::{alpha_num, byte, space, take_until_byte},
         combinator::{any_partial_state, AnyPartialState},
         repeat::{repeat_until, skip_many},
     },
@@ -276,7 +276,7 @@ fn unescape(str: String) -> String {
 
 parser! {
     type PartialState = AnyPartialState;
-  
+
     fn parse_attribute['a, Input]()(Input) -> (String, String)
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,

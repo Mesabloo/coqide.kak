@@ -18,3 +18,4 @@ tokio-util = { version = "0.7.0", features = ["codec"] }
 tokio = { version = "1.17.0", features = ["net", "fs", "io-util", "process", "rt", "macros", "rt-multi-thread", "sync", "io-std"] }
 tokio-stream = { version = "0.1.8" }
 bimap = "0.6.2"
+nom = "7"

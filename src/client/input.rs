@@ -1,11 +1,8 @@
 use std::io;
 use std::sync::{Arc, Mutex};
 
-use tokio::fs::File;
-use tokio::io::{stdin, Stdin};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, watch};
-use tokio_stream::StreamExt;
 use tokio_util::codec::FramedRead;
 
 use crate::coqtop::xml_protocol::types::{ProtocolCall, ProtocolValue};
@@ -67,23 +64,19 @@ impl ClientInput {
         loop {
             tokio::select! {
                 Ok(_) = stop.changed() => break Ok(()),
-                cmd = self.reader.next() => {
-                    log::debug!("{:?}", self.reader.read_buffer());
-
-                    if let Some(cmd) = cmd {
-                        match cmd? {
-                            None => {
-                                log::warn!("Junk byte ignored in stream");
-                            },
-                            Some(cmd) => {
-                                self.command_tx.send(cmd).map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
-                            }
-                        }
-                    }
-                }
                 Some(cmd) = self.command_rx.recv(), if self.state.lock().unwrap().can_go_further() => {
                     self.state.lock().unwrap().stop_processing();
                     self.process_command(cmd).await?;
+                }
+                cmd = ClientCommand::decode_stream(&mut self.reader) => {
+                    match cmd? {
+                        None => {
+                            log::warn!("Junk byte ignored in stream");
+                        },
+                        Some(cmd) => {
+                            self.command_tx.send(cmd).map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+                        }
+                    }
                 }
                 else => {}
             }

@@ -22,7 +22,7 @@ pub struct ResponseProcessor {
 
 impl ResponseProcessor {
     pub fn new(
-        session: Arc<Session>,
+        _session: Arc<Session>,
         coqtop_response_rx: mpsc::UnboundedReceiver<ProtocolResult>,
         command_display_tx: mpsc::UnboundedSender<DisplayCommand>,
         state: Arc<Mutex<State>>,

@@ -147,7 +147,7 @@ for char in lazy_read_stdin():
         # treat it as the end of a coq statement IF either the character before or the character
         # after is blank (space, tab, newline, ...)
         if type(last_known_state) not in [StateComment, StateString]:
-            if not last_char.isspace():
+            if last_char is not None and not last_char.isspace():
                 states.append(StateEOL())
             else:
                 at_beginning_of_coq_line = True
@@ -167,13 +167,13 @@ for char in lazy_read_stdin():
         at_beginning_of_coq_line = True
     elif char == '{' and type(last_known_state) not in [
             StateString, StateComment, StateEndComment, StateStringBackslash
-    ]:
+    ] and at_beginning_of_coq_line:
         # We are starting a new subproof
-        states.append(StateBeginProof())
+        #states.append(StateBeginProof())
         at_beginning_of_coq_line = True
         if yield_position():
             break
-    elif char == '}' and type(last_known_state) is StateBeginProof:
+    elif char == '}' and at_beginning_of_coq_line:
         # We are ending a subproof
         states.pop()
         at_beginning_of_coq_line = True

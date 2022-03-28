@@ -1,8 +1,7 @@
 use super::{
     parser::{XMLDecoder, XMLNode},
     types::{
-        FeedbackContent,
-        MessageType::{self, *},
+        FeedbackContent, MessageType,
         ProtocolResult::{self, *},
         ProtocolRichPP::{self, *},
         ProtocolRichPPPart,
@@ -372,7 +371,7 @@ impl ProtocolResult {
 impl ProtocolRichPP {
     /// Tries to decode a [`ProtocolRichPP`] from a [`XMLNode`].
     pub fn decode(xml: XMLNode) -> io::Result<Self> {
-        let mut raw = String::new();
+        let raw = String::new();
         let inner1 = xml
             .get_child("_".to_string())
             .ok_or_else(|| {

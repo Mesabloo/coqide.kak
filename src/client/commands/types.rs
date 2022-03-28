@@ -1,10 +1,10 @@
 use crate::{
-    codespan::CodeSpan,
     coqtop::xml_protocol::types::{ProtocolRichPP, ProtocolValue},
+    range::Range,
 };
 
-#[derive(Debug)]
-pub enum KakouneCommand {
+#[derive(Debug, Clone)]
+pub enum ClientCommand {
     /// Initialise the daemon.
     Init,
     /// Stop the daemon.
@@ -18,9 +18,9 @@ pub enum KakouneCommand {
     /// [`COQTOP`]: crate::coqtop::slave::COQTOP
     Query(String),
     /// Process all the given statements (which correspond to until where the cursor is).
-    MoveTo(Vec<(CodeSpan, String)>),
+    MoveTo(Vec<(Range, String)>),
     /// Try to process the next statement.
-    Next(CodeSpan, String),
+    Next(Range, String),
     /// Allow bypassing the last error range reported, without removing it from the UI.
     IgnoreError,
     /// Ask for hints for the current proof.
@@ -31,9 +31,9 @@ pub enum KakouneCommand {
 #[derive(Debug, Clone)]
 pub enum DisplayCommand {
     /// Refresh the processed range.
-    RefreshProcessedRange(CodeSpan),
+    RefreshProcessedRange(Range),
     /// Refresh the error range.
-    RefreshErrorRange(Option<CodeSpan>),
+    RefreshErrorRange(Option<Range>),
     /// Output the result with colors.
     ColorResult(ProtocolRichPP),
     /// Show some goals.

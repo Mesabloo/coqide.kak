@@ -20,13 +20,13 @@ use log4rs::{
 pub fn init<P: AsRef<Path>>(path: P) -> io::Result<Handle> {
     let on_console = ConsoleAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
-            "{h([{d(%Y-%m-%d %H:%M:%S)} [{P}] {M} {l}])} {m}{n}",
+            "{d(%Y-%m-%d %H:%M:%S)} {M} {h([{l}])} {m}{n}",
         )))
         .target(Target::Stderr)
         .build();
     let in_log_file = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
-            "[{d(%Y-%m-%d %H:%M:%S)} [{P}] {M} {l}] {m}{n}",
+            "{d(%Y-%m-%d %H:%M:%S)} {M} {h([{l}])} {m}{n}",
         )))
         .build(path)?;
 
@@ -51,9 +51,4 @@ pub fn init<P: AsRef<Path>>(path: P) -> io::Result<Handle> {
 
     log4rs::init_config(config)
         .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{:?}", err)))
-}
-
-/// Retrieves the file where all logging is done.
-pub fn log_file(tmp_dir: &String) -> String {
-    format!("{}/log", tmp_dir)
 }

@@ -20,20 +20,19 @@ use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
 
-use crate::codespan::CodeSpan;
+use crate::range::Range;
 
-use super::types::KakouneCommand;
-
+use super::types::ClientCommand;
 
 #[derive(Default)]
-struct CommandDecoder {
+pub struct CommandDecoder {
     state: AnyPartialState,
 }
 
 unsafe impl Send for CommandDecoder {}
 
 impl Decoder for CommandDecoder {
-    type Item = Option<KakouneCommand>;
+    type Item = Option<ClientCommand>;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -74,28 +73,32 @@ impl Decoder for CommandDecoder {
     }
 }
 
-impl KakouneCommand {
-    /// Tries to parse a [`KakouneCommand`] from the given file.
-    ///
-    /// **Note:** the double [`Option`] may seem weird at first, but here is why:
-    /// - The first [`Option`] defines whether the stream was closed or not (which *should* never happen in such case, but nobody knows).
-    ///   If the stream is closed, then this will return [`None`].
-    /// - The second [`Option`] defines whether a command was successfully decoded, or if a simple byte as been ignored.
-    ///   If a command could not be decoded, this will return [`None`].
-    pub async fn parse_from<R>(input: R) -> io::Result<Option<Option<Self>>>
+impl ClientCommand {
+    /// Decodes a stream chunks by chunks until a complete XML node can be decoded.
+    pub async fn decode_stream<R>(
+        reader: &mut FramedRead<R, CommandDecoder>,
+    ) -> io::Result<Option<Self>>
     where
         R: AsyncRead + Unpin,
     {
-        let decoder = CommandDecoder::default();
-
-        FramedRead::new(input, decoder).try_next().await
+        tokio::select! {
+            Some(cmd) = reader.next() => cmd,
+            else => Err(io::Error::new(io::ErrorKind::BrokenPipe, "Broken pipe")),
+        }
     }
+}
+
+pub fn command_decoder<R>(stream: R) -> FramedRead<R, CommandDecoder>
+where
+    R: AsyncRead + Unpin,
+{
+    FramedRead::new(stream, CommandDecoder::default())
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_command['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_command['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -103,14 +106,14 @@ parser! {
     {
         any_partial_state(choice((
             attempt(parse_init()),
-            attempt(parse_previous()),
-            attempt(parse_rewind_to()),
-            attempt(parse_query()),
-            attempt(parse_move_to()),
-            attempt(parse_next()),
+            parse_previous(),
+            parse_rewind_to(),
             attempt(parse_quit()),
-            attempt(parse_hints()),
-            attempt(parse_ignore_error()),
+            parse_query(),
+            parse_move_to(),
+            parse_next(),
+            parse_hints(),
+            parse_ignore_error(),
             ignore_byte(),
         )))
     }
@@ -119,33 +122,33 @@ parser! {
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_init['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_init['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(range(&b"init\n"[..])).map(|_| Some(KakouneCommand::Init))
+        any_partial_state(range(&b"init\n"[..])).map(|_| Some(ClientCommand::Init))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_previous['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_previous['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(range(&b"previous\n"[..])).map(|_| Some(KakouneCommand::Previous))
+        any_partial_state(range(&b"previous\n"[..])).map(|_| Some(ClientCommand::Previous))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_rewind_to['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_rewind_to['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -162,7 +165,7 @@ parser! {
         )).map(|(_, _, line, _, col, _, _)| {
             let line = line.parse::<u64>().unwrap();
             let col = col.parse::<u64>().unwrap();
-            Some(KakouneCommand::RewindTo(line, col))
+            Some(ClientCommand::RewindTo(line, col))
         })
     }
 }
@@ -170,7 +173,7 @@ parser! {
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_query['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_query['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -182,14 +185,14 @@ parser! {
             parse_string(),
             skip_many(space()),
             newline(),
-        )).map(|(_, _, str, _, _)| Some(KakouneCommand::Query(str)))
+        )).map(|(_, _, str, _, _)| Some(ClientCommand::Query(str)))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_move_to['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_move_to['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -201,14 +204,14 @@ parser! {
             sep_by1(parse_coq_statement(), skip_many1(space())),
             skip_many(space()),
             newline(),
-        )).map(|(_, _, codes, _, _)| Some(KakouneCommand::MoveTo(codes)))
+        )).map(|(_, _, codes, _, _)| Some(ClientCommand::MoveTo(codes)))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_next['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_next['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -220,47 +223,47 @@ parser! {
             parse_coq_statement(),
             skip_many(space()),
             newline(),
-        )).map(|(_, _, (span, stmt), _, _)| Some(KakouneCommand::Next(span, stmt)))
+        )).map(|(_, _, (span, stmt), _, _)| Some(ClientCommand::Next(span, stmt)))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_quit['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_quit['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(range(&b"quit\n"[..])).map(|_| Some(KakouneCommand::Quit))
+        any_partial_state(range(&b"quit\n"[..])).map(|_| Some(ClientCommand::Quit))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_ignore_error['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_ignore_error['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
-        any_partial_state(range(&b"ignore-error\n"[..])).map(|_| Some(KakouneCommand::IgnoreError))
+        any_partial_state(range(&b"ignore-error\n"[..])).map(|_| Some(ClientCommand::IgnoreError))
     }
 }
 
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_hints['a, Input]()(Input) -> Option<KakouneCommand>
+    fn parse_hints['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
     ]
     {
         // FIXME: somehow this is never parsed directly, only on the second try...
-        any_partial_state(range(&b"hints\n"[..])).map(|_| Some(KakouneCommand::Hints))
+        any_partial_state(range(&b"hints\n"[..])).map(|_| Some(ClientCommand::Hints))
     }
 }
 
@@ -289,7 +292,7 @@ parser! {
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_coq_statement['a, Input]()(Input) -> (CodeSpan, String)
+    fn parse_coq_statement['a, Input]()(Input) -> (Range, String)
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -319,7 +322,7 @@ parser! {
 parser! {
     type PartialState = AnyPartialState;
 
-    fn parse_line_span['a, Input]()(Input) -> CodeSpan
+    fn parse_line_span['a, Input]()(Input) -> Range
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -334,7 +337,7 @@ parser! {
             byte::byte(b'.'),
             parse_int(),
         )).map(|(begin_line, _, begin_column, _, end_line, _, end_column)| {
-            CodeSpan::new(begin_line, begin_column, end_line, end_column)
+            Range::new(begin_line, begin_column, end_line, end_column)
         })
     }
 }
@@ -342,7 +345,7 @@ parser! {
 parser! {
     type PartialState = AnyPartialState;
 
-    fn ignore_byte['a, Input]()(Input) -> Option<KakouneCommand>
+    fn ignore_byte['a, Input]()(Input) -> Option<ClientCommand>
     where [
         Input: RangeStream<Token = u8, Range = &'a [u8]>,
         Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,

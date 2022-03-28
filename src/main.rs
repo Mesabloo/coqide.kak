@@ -1,111 +1,105 @@
 #![feature(box_patterns)]
 
-use std::{env, path::Path, process::exit};
+use std::{
+    path::Path,
+    process::exit,
+    sync::{Arc, Mutex},
+};
 
-use async_signals::Signals;
-use coqtop::{
-    adapter::SynchronizedState,
-    feedback_queue::{Feedback, FeedbackQueue},
-    slave::CoqtopSlave,
-    xml_protocol::types::{ProtocolCall, ProtocolResult},
-};
-use files::{goal_file, result_file};
-use kakoune::{
-    commands::{
-        receiver::CommandReceiver,
-        types::{DisplayCommand, KakouneCommand},
-    },
-    slave::KakSlave,
-};
+use client::input::ClientInput;
+use coqtop::{process::CoqIdeTop, response_processor::ResponseProcessor};
+use files::{goal_file, log_file, result_file};
+use kakoune::{command_line::kak, ui_updater::KakouneUIUpdater};
+use session::{edited_file, session_id, temporary_folder, Session};
+use state::State;
 use tokio::{
     fs::File,
     sync::{mpsc, watch},
 };
-use tokio_stream::StreamExt;
 
-mod codespan;
+mod client;
 mod coqtop;
 mod files;
 mod kakoune;
 mod logger;
+mod range;
+mod session;
+mod state;
 
 #[tokio::main]
-pub async fn main() {
-    let args = env::args().collect::<Vec<_>>();
-    if args.len() != 4 {
+async fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    if args.len() != 5 {
         eprintln!(
-            "3 arguments needed: <KAK_SESSION> <COQ_FILE> <TMP_DIR>\n{} provided.",
-            args.len()
+            "4 arguments needed on the command-line: <KAK_SESSION> <COQ_FILE> <TMP_DIR> <INPUT_FIFO>\n{} provided.",
+            args.len() - 1
         );
-
         exit(exitcode::CONFIG);
     }
 
-    let kak_session = args[1].clone();
-    let coq_file = args[2].clone();
-    let tmp_dir = args[3].clone();
+    let session = Session::new(
+        args[1].clone(),
+        args[2].clone(),
+        args[3].clone(),
+        args[4].clone(),
+    );
 
-    // Create all necessary files
-    for fun in &[
-        logger::log_file,
-        goal_file,
-        result_file, /*, command_file*/
-    ] {
-        let path = fun(&tmp_dir);
+    for fun in &[log_file, goal_file, result_file] {
+        let path = fun(&temporary_folder(session.clone()));
         let path = Path::new(&path);
         if !Path::exists(path) {
             File::create(&path).await.unwrap();
         }
     }
 
-    // Initialise logging
-    let _handle = logger::init(logger::log_file(&tmp_dir)).unwrap();
+    let _handle = logger::init(log_file(&temporary_folder(session.clone()))).unwrap();
+    // from now on, we can use the macros inside log::
 
-    let (stop_tx, stop_rx) = watch::channel(());
+    let (stop_tx, mut stop_rx) = watch::channel(());
 
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<KakouneCommand>();
-    let (call_tx, call_rx) = mpsc::unbounded_channel::<ProtocolCall>();
-    let (response_tx, response_rx) = mpsc::unbounded_channel::<ProtocolResult>();
-    let (disp_cmd_tx, disp_cmd_rx) = mpsc::unbounded_channel::<DisplayCommand>();
-    let (feedback_tx, feedback_rx) = mpsc::unbounded_channel::<Feedback>();
+    let (coqtop_call_tx, coqtop_call_rx) = mpsc::unbounded_channel();
+    let (coqtop_response_tx, coqtop_response_rx) = mpsc::unbounded_channel();
+    let (kakoune_display_tx, kakoune_display_rx) = mpsc::unbounded_channel();
 
-    let mut coqtop_slave = CoqtopSlave::new(call_rx, response_tx, &tmp_dir, coq_file.clone())
+    let state = Arc::new(Mutex::new(State::new()));
+
+    let mut coqtop_bridge = CoqIdeTop::spawn(session.clone(), coqtop_call_rx, coqtop_response_tx)
         .await
         .unwrap();
-    let mut coqtop_adapter = SynchronizedState::new(
-        call_tx,
-        response_rx,
-        feedback_tx,
-        cmd_rx,
-        disp_cmd_tx.clone(),
-        kak_session.clone(),
-        coq_file.clone(),
+    let mut client_bridge =
+        ClientInput::new(session.clone(), coqtop_call_tx, stop_tx, state.clone())
+            .await
+            .unwrap();
+    let mut response_processor = ResponseProcessor::new(
+        session.clone(),
+        coqtop_response_rx,
+        kakoune_display_tx,
+        state.clone(),
     );
-    let mut kakoune_receiver =
-        CommandReceiver::new(cmd_tx, kak_session.clone(), &tmp_dir, coq_file.clone());
-    let mut kakoune_slave =
-        KakSlave::new(disp_cmd_rx, kak_session.clone(), coq_file.clone(), &tmp_dir);
-    let mut feedback_queue = FeedbackQueue::new(feedback_rx, disp_cmd_tx.clone());
+    let mut ui_updater = KakouneUIUpdater::new(session.clone(), kakoune_display_rx);
 
-    let mut signals = Signals::new(vec![libc::SIGINT]).unwrap();
     loop {
         tokio::select! {
-            Some(libc::SIGINT) = signals.next() => {
-                stop_tx.send(()).unwrap();
-                break Ok(());
-            }
-            res = coqtop_slave.process(stop_rx.clone()) => break res,
-            res = coqtop_adapter.process(stop_rx.clone()) => break res,
-            res = kakoune_receiver.process(stop_rx.clone()) => break res,
-            res = kakoune_slave.process(stop_rx.clone()) => break res,
-            res = feedback_queue.process(stop_rx.clone()) => break res,
+            res = coqtop_bridge.transmit_until(stop_rx.clone()) => break res,
+            res = client_bridge.handle_commands_until(stop_rx.clone()) => break res,
+            res = response_processor.process_until(stop_rx.clone()) => break res,
+            res = ui_updater.update_until(stop_rx.clone()) => break res,
+            Ok(_) = stop_rx.changed() => break Ok(()),
             else => {}
         }
     }
     .unwrap();
 
-    kakoune_receiver.stop().await.unwrap();
-    coqtop_slave.quit().await.unwrap();
+    log::debug!("Stopping CoqIDE daemon");
 
-    drop(signals);
+    kak(
+        &session_id(session.clone()),
+        format!(
+            r#"evaluate-commands -buffer '{}' %{{ coqide-purge }}"#,
+            edited_file(session.clone())
+        ),
+    )
+    .await
+    .unwrap();
+    coqtop_bridge.quit().await.unwrap();
 }

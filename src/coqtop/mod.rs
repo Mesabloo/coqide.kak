@@ -1,8 +1,3 @@
-/// All utilities related to the XML protocol (mainly serialization).
+pub mod process;
+pub mod response_processor;
 pub mod xml_protocol;
-
-pub mod adapter;
-
-pub mod slave;
-
-pub mod feedback_queue;

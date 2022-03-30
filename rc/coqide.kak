@@ -104,7 +104,7 @@ set-face global coqide_to_be_processed_face default,magenta
 set-face global coqide_processed_face default,green
 # The face which indicates an error has occurred somewhere.
 # Defaults to `default,red`.
-set-face global coqide_error_range default,red
+set-face global coqide_error_face default,red
 # The face to highlight ranges with admitted axioms.
 # Defaults to `default,yellow`.
 set-face global coqide_admitted_face default,yellow
@@ -163,10 +163,10 @@ define-command -docstring '
       hook -once -group coqide buffer=$kak_opt_coqide_buffer BufClose .* coqide-stop
       hook -once -group coqide buffer=$kak_opt_coqide_buffer ClientClose .* coqide-stop
       hook -once -group coqide buffer=$kak_opt_coqide_buffer KakEnd .* coqide-stop
-      
-      hook -group coqide buffer=$kak_opt_coqide_buffer InsertChar .* coqide-on-text-change
-      hook -group coqide buffer=$kak_opt_coqide_buffer InsertDelete .* coqide-on-text-change
-    " # These last two hooks unfortunately do not take care of
+    "  
+    #  hook -group coqide buffer=$kak_opt_coqide_buffer InsertChar .* coqide-on-text-change
+    #  hook -group coqide buffer=$kak_opt_coqide_buffer InsertDelete .* coqide-on-text-change
+    # " # These last two hooks unfortunately do not take care of
       # text editing in normal mode (e.g. when cutting text).
       #
       # It would be great to have a hook for every buffer modification.
@@ -192,7 +192,7 @@ define-command -docstring '
   set-option buffer coqide_socat_pid %sh{
     mkfifo "$kak_opt_coqide_fifo_input" &>/dev/null
     exec 3<>"$kak_opt_coqide_fifo_input"
-    socat -v -v -u PIPE:"$kak_opt_coqide_fifo_input" UNIX-CONNECT:"$kak_opt_coqide_socket_input" &>"$kak_opt_coqide_log_output" </dev/null &
+    socat -u PIPE:"$kak_opt_coqide_fifo_input" UNIX-CONNECT:"$kak_opt_coqide_socket_input" &>"$kak_opt_coqide_log_output" </dev/null &
     echo "$!"
   }
   
@@ -227,7 +227,7 @@ define-command -docstring '
       exit
     fi
 
-    echo "echo -debug 'coqide: sending $§$1§ to daemon...'"
+    echo "echo -debug 'coqide: sending %§$1§ to daemon...'"
 
     echo "$1" >>"$kak_opt_coqide_fifo_input"
   }
@@ -236,7 +236,7 @@ define-command -docstring '
 define-command -docstring '
   
 ' -params 0 coqide-next %{
-  evaluate-commands -draft -save-regs '"ab' %{
+  evaluate-commands -draft -save-regs 'ab' %{
     execute-keys -draft %sh{
       IFS=' .,|' read -r _ begin_line begin_column end_line end_column _ <<< "$kak_opt_coqide_to_be_processed_range"
       begin_line=${begin_line:-1}
@@ -248,13 +248,18 @@ define-command -docstring '
       if [ "$end_column" -gt 1 ]; then
         keys="${keys}${end_column}l"
       fi
-      keys="${keys}Ge<a-;>|python3 $kak_opt_coqide_source/parse_coq.py \$kak_cursor_line \$kak_cursor_column next<ret>\"ayu<space>"
+      keys="${keys}Ge<a-;>|python3 $kak_opt_coqide_source/parse_coq.py \$kak_cursor_line \$kak_cursor_column next<ret>\"ay"
       
       echo "$keys"
     }
-    set-register b %reg{a}
+    evaluate-commands %sh{
+      IFS=' ' read -r range _ <<< "$kak_reg_a"
+      echo "set-register b '$range'"
+    }
+    coqide-push-to-be-processed "%reg{b}|coqide_to_be_processed_face"
+    #echo -debug %opt{coqide_to_be_processed_range}
     execute-keys -draft %sh{
-      IFS='.,| ' read -r begin_line begin_column end_line end_column _ <<< "$kak_reg_a"
+      IFS='.,| ' read -r begin_line begin_column end_line end_column _ <<< "$kak_reg_b"
       begin_line=${begin_line:-1}
       begin_column=${begin_column:-1}
       end_line=${end_line:-1}
@@ -275,21 +280,30 @@ define-command -docstring '
       else
         keys="${keys}$((end_line - begin_line))JGh$((end_column - 1))L"
       fi
-      keys="${keys}<a-;>|sed -e 's/\"/\\\\\"/g' -e '1s/^/next $begin_line.$begin_column,$end_line.$end_column \"/' -e '\$s/\$/\"/'<ret>\"ayu<space>"
+      keys="${keys}<a-;>|sed -e 's/\"/\\\\\"/g' -e '1s/^/next $begin_line.$begin_column,$end_line.$end_column \"/' -e '\$s/\$/\"/'<ret>\"ay"
 
       echo "$keys"
     }
     coqide-send-command "%reg{a}"
-    evaluate-commands -draft %sh{
-      IFS='.,| ' read -r _ _ end_line end_column _ <<< "$kak_reg_b"
-      IFS=' .,|' read -r _ begin_line begin_column _ _ _ <<< "$kak_opt_coqide_to_be_processed_range"
-      begin_line=${begin_line:-1}
-      begin_column=${begin_column:-1}
-      end_line=${end_line:-1}
-      end_column=${end_column:-1}
+  }
+  coqide-goto-tip
+  echo -debug %opt{coqide_to_be_processed_range}
+}
 
-      echo "set-option buffer coqide_to_be_processed_range %val{timestamp} '$begin_line.$begin_column,$end_line.$end_column|coqide_to_be_processed_face'"
-    }
+define-command -docstring '
+  Move the main cursor to the tip of the area to be processed.
+' -params 0 coqide-goto-tip %{
+  echo -debug "coqide: moving cursor to tip"
+  
+  execute-keys %sh{
+    IFS=' .,|' read -r _ _ _ eline ecol _ <<< "$kak_opt_coqide_to_be_processed_range"
+    eline=${eline:-1}
+    ecol=${ecol:-1}
+
+    echo "${eline}ggh"
+    if [ "$ecol" -gt 1 ]; then
+      echo "$((ecol - 1))l"
+    fi
   }
 }
 
@@ -327,6 +341,25 @@ define-command -docstring '
     set-option buffer coqide_result_highlight %val{timestamp} %arg{2}
   }
 }
+
+define-command -docstring '
+  Pop the first range present in the range for to be processed code.
+' -hidden -params 0 coqide-pop-to-be-processed %{
+  echo -debug "coqide: removing first range from to be processed range"
+  evaluate-commands %sh{
+    IFS=' ' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
+    echo "set-option -remove buffer coqide_to_be_processed_range $range"
+  }
+}
+
+define-command -docstring '
+  Push a new range into the range of to be processed code.
+' -hidden -params 1 coqide-push-to-be-processed %{
+  echo -debug "coqide: push %arg{1} to to be processed range"
+  set-option -add buffer coqide_to_be_processed_range %arg{1}
+  #echo -debug %opt{coqide_to_be_processed_range}
+}
+
 
 
 define-command -docstring '

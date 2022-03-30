@@ -13,7 +13,7 @@ pub struct Operation {
 pub struct State {
     pub operations: VecDeque<Operation>,
     pub waiting: VecDeque<ClientCommand>,
-    last_error: Option<Range>,
+    pub last_error: Option<Range>,
     go_further: AtomicBool,
 }
 

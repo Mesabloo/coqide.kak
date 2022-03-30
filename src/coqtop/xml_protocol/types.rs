@@ -24,6 +24,10 @@ pub enum ProtocolValue {
     StateId(i64),
     /// `<route_id val="..."/>`
     RouteId(i64),
+    /// `<union val="in_l">v1</union>` represents a left value of a sumtype
+    Inl(Box<ProtocolValue>),
+    /// `<union val="in_r">v1</union>` represents a right value of a sumtype
+    Inr(Box<ProtocolValue>),
 
     /// `<status>'paths''proofName''allProofs''proofNumber'</status>`
     ///

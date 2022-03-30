@@ -4,8 +4,8 @@ use bytes::Buf;
 
 use nom::{
     branch::alt,
-    bytes::streaming::{is_a, is_not, tag, take_while, take_while1},
-    combinator::{cut, map, value},
+    bytes::streaming::{is_a, tag, take, take_while, take_while1},
+    combinator::{cut, map, value, verify},
     multi::{many0, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
     IResult,
@@ -190,7 +190,6 @@ fn parse_coq_statement<'a>(input: Input<'a>) -> IResult<Input<'a>, (Range, Strin
 
 fn parse_string<'a>(input: Input<'a>) -> IResult<Input<'a>, String> {
     let escaped = |input| map(tag("\\\""), |_| b'"')(input);
-    let any_single = |input| map(is_not("\""), |s: Input<'a>| s[0])(input);
 
     delimited(
         tag("\""),
@@ -198,6 +197,13 @@ fn parse_string<'a>(input: Input<'a>) -> IResult<Input<'a>, String> {
             std::str::from_utf8(&res[..]).unwrap().to_string()
         }),
         tag("\""),
+    )(input)
+}
+
+fn any_single<'a>(input: Input<'a>) -> IResult<Input<'a>, u8> {
+    map(
+        verify(take(1usize), |s: &[u8]| s[0] != b'"'),
+        |s: &[u8]| s[0],
     )(input)
 }
 

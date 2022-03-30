@@ -76,6 +76,15 @@ impl ProtocolValue {
                     .collect::<Result<Vec<_>, _>>()
                     .map(List)
             }
+            "union" => match xml.attributes.get("val").unwrap().as_str() {
+                "in_l" => Ok(Inl(Box::new(ProtocolValue::decode(
+                    xml.children[0].as_node().cloned().unwrap(),
+                )?))),
+                "in_r" => Ok(Inr(Box::new(ProtocolValue::decode(
+                    xml.children[0].as_node().cloned().unwrap(),
+                )?))),
+                _ => unreachable!(),
+            },
             "string" => {
                 assert_decode_error(xml.attributes.is_empty(), || InvalidString)?;
 

@@ -5,7 +5,7 @@ impl ProtocolValue {
     /// Encode a protocol value as XML to be sent to the `coqidetop` process.
     pub fn encode(self) -> String {
         use ProtocolValue::*;
-      
+
         match self {
             Unit => "<unit/>".to_string(),
             List(vs) => format!(
@@ -15,6 +15,8 @@ impl ProtocolValue {
                     .collect::<Vec<_>>()
                     .join("")
             ),
+            Inl(box val) => format!("<union val=\"in_l\">{}</union>", val.encode()),
+            Inr(box val) => format!("<union val=\"in_r\">{}</union>", val.encode()),
             Str(s) => format!("<string>{}</string>", escape(s)),
             Int(i) => format!("<int>{}</int>", i),
             Boolean(b) => format!("<bool val=\"{}\"/>", b),
@@ -58,7 +60,7 @@ impl ProtocolCall {
     /// Encode a protocol call as XML to be sent to the `coqidetop` process.
     pub fn encode(self) -> String {
         use ProtocolCall::*;
-      
+
         match self {
             Init(val) => format!("<call val=\"Init\">{}</call>", val.encode()),
             EditAt(state_id) => format!(
@@ -68,13 +70,16 @@ impl ProtocolCall {
             Quit => format!("<call val=\"Quit\">{}</call>", ProtocolValue::Unit.encode()),
             Query(val) => format!("<call val=\"Query\">{}</call>", val.encode()),
             Goal => format!("<call val=\"Goal\">{}</call>", ProtocolValue::Unit.encode()),
-            Hints => format!("<call val=\"Hints\">{}</call>", ProtocolValue::Unit.encode()),
+            Hints => format!(
+                "<call val=\"Hints\">{}</call>",
+                ProtocolValue::Unit.encode()
+            ),
             Add(code, state_id) => format!(
                 "<call val=\"Add\">{}</call>",
                 ProtocolValue::Pair(
                     Box::new(ProtocolValue::Pair(
                         Box::new(ProtocolValue::Str(code)),
-                        Box::new(ProtocolValue::Int(2))
+                        Box::new(ProtocolValue::Int(-1))
                     )),
                     Box::new(ProtocolValue::Pair(
                         Box::new(ProtocolValue::StateId(state_id)),

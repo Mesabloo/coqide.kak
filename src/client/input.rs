@@ -7,8 +7,9 @@ use tokio_util::codec::FramedRead;
 
 use crate::coqtop::xml_protocol::types::{ProtocolCall, ProtocolValue};
 use crate::kakoune::command_line::kak;
+use crate::range::Range;
 use crate::session::{edited_file, input_fifo, session_id, Session};
-use crate::state::State;
+use crate::state::{Operation, State};
 
 use super::commands::decode::{command_decoder, CommandDecoder};
 use super::commands::types::ClientCommand;
@@ -95,11 +96,11 @@ impl ClientInput {
         match command {
             ClientCommand::Init => self.process_init().await,
             ClientCommand::Quit => self.process_quit().await,
-            ClientCommand::Previous => todo!(),
+            ClientCommand::Previous => self.process_previous().await,
             ClientCommand::RewindTo(_, _) => todo!(),
             ClientCommand::Query(_) => todo!(),
             ClientCommand::MoveTo(_) => todo!(),
-            ClientCommand::Next(_, _) => todo!(),
+            ClientCommand::Next(range, code) => self.process_next(range, code).await,
             ClientCommand::IgnoreError => todo!(),
             ClientCommand::Hints => todo!(),
         }
@@ -115,6 +116,29 @@ impl ClientInput {
 
         self.send_call(ProtocolCall::Quit).await?;
         self.stop_tx.send(()).unwrap();
+        Ok(())
+    }
+
+    async fn process_next(&mut self, range: Range, code: String) -> io::Result<()> {
+        let call = match self.state.lock().unwrap().operations.front() {
+            None => panic!(),
+            Some(Operation { state_id, .. }) => ProtocolCall::Add(code, *state_id),
+        };
+        self.send_call(call).await?;
+
+        Ok(())
+    }
+
+    async fn process_previous(&mut self) -> io::Result<()> {
+        let call = match self.state.lock().unwrap().operations.get(1) {
+            Some(Operation { state_id, .. }) => Some(ProtocolCall::EditAt(*state_id)),
+            None => None,
+        };
+        match call {
+            Some(call) => self.send_call(call).await?,
+            None => {}
+        }
+
         Ok(())
     }
 

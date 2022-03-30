@@ -2,6 +2,8 @@ use std::{io, process::Stdio, sync::Arc};
 
 use tokio::{
     io::AsyncWriteExt,
+    join,
+    net::{TcpListener, TcpStream},
     process::{Child, ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
 };
@@ -15,15 +17,19 @@ use crate::{
 use super::xml_protocol::{parser::XMLDecoder, types::ProtocolCall};
 
 /// The name of the `coqtop` process.
-pub const COQTOP: &str = "coqidetop";
+pub const COQTOP: &'static str = "coqidetop";
 
 pub struct CoqIdeTop {
-    /// The channel to write messages to.
-    main_w: ChildStdin,
+    /// The main channel where [`COQTOP`] sends its responses.
+    //main_r: TcpStream,
+    /// The main channel to send commands (calls, see [`ProtocolCall`]) to [`COQTOP`].
+    ///
+    /// [`ProtocolCall`]: crate::coqtop::xml_protocol::types::ProtocolCall
+    main_w: TcpStream,
     /// The underlying process.
     process: Child,
     /// The framed reader which decodes all input coming from [`COQTOP`]'s stdout.
-    reader: FramedRead<ChildStdout, XMLDecoder>,
+    reader: FramedRead<TcpStream, XMLDecoder>,
     /// The receiving end of the channel used to transmit commands to [`COQTOP`].
     coqtop_call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
     /// The sending end of the channel used to transmit responses from [`COQTOP`].
@@ -38,17 +44,35 @@ impl CoqIdeTop {
         coqtop_call_rx: mpsc::UnboundedReceiver<ProtocolCall>,
         coqtop_response_tx: mpsc::UnboundedSender<ProtocolResult>,
     ) -> io::Result<Self> {
+        let (main_w_listen, main_w_port) = create_listener().await?;
+        let (main_r_listen, main_r_port) = create_listener().await?;
+
+        let ports = [main_r_port, main_w_port];
+
+        // NOTE: `async { X.await }` can also be written `X`. However, I find it less clear when types
+        // are not inlined in my code (which rust-analyzer is able to do).
+        // Please do not refactor this...
+        let main_r = async { main_r_listen.accept().await };
+        let main_w = async { main_w_listen.accept().await };
+
         let flags = [
             "-async-proofs",
             "on",
             "-topfile",
             &edited_file(session.clone()),
         ];
-        // TODO: add flags found in a `.CoqProject` file
+        // TODO: add flags found in a `_CoqProject` file
 
-        let mut coqidetop = coqidetop(&temporary_folder(session.clone()), flags).await?;
-        let main_w = coqidetop.stdin.take().unwrap();
-        let main_r = coqidetop.stdout.take().unwrap();
+        let mut coqidetop =
+            async { coqidetop(&temporary_folder(session.clone()), ports, flags).await };
+
+        let (main_r, main_w, coqidetop) = join!(main_r, main_w, coqidetop);
+        // NOTE: because we are using TCP streams, we don't care about the second parameter returned by [`TcpListener::accept`]
+        // hence all the `.0`s.
+        let (main_r, main_w, coqidetop) = (main_r?.0, main_w?.0, coqidetop?);
+
+        // let main_w = coqidetop.stdin.take().unwrap();
+        // let main_r = coqidetop.stdout.take().unwrap();
 
         log::info!(
             "{} (process {}) is up and running!",
@@ -59,6 +83,7 @@ impl CoqIdeTop {
         let reader = xml_decoder(main_r);
 
         Ok(Self {
+            //main_r,
             main_w,
             process: coqidetop,
             reader,
@@ -98,14 +123,29 @@ impl CoqIdeTop {
     }
 }
 
+/// Creates a new [`TcpListener`] listening on `127.0.0.1:0`, and returns both the
+/// listener and the port it is listening on.
+async fn create_listener() -> io::Result<(TcpListener, u16)> {
+    let listen = TcpListener::bind("127.0.0.1:0").await?;
+    let port = listen.local_addr()?.port();
+
+    Ok((listen, port))
+}
+
 /// Spawns a new [`COQTOP`] process by feeding it additional flags to take in account.
-async fn coqidetop<const N: usize>(_tmp_dir: &String, flags: [&str; N]) -> io::Result<Child> {
+async fn coqidetop<const N: usize>(
+    _tmp_dir: &String,
+    ports: [u16; 2],
+    flags: [&str; N],
+) -> io::Result<Child> {
     Command::new(COQTOP)
         .arg("-main-channel")
-        .arg("stdfds")
+        .arg(format!("127.0.0.1:{}:{}", ports[0], ports[1]))
+        //.arg("stdfds")
         .args(flags)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
 }

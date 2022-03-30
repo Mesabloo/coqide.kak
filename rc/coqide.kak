@@ -258,7 +258,7 @@ define-command -docstring '
     }
     coqide-push-to-be-processed "%reg{a}"
     #echo -debug %opt{coqide_to_be_processed_range}
-    select %reg{b}
+    select %reg{a}
     execute-keys -draft %{ <a-;>|sed -e 's/"/\\"/g' -e '1s/^/next $kak_reg_a "/' -e '$s/$/"/'<ret>"ayu }
     coqide-send-command "%reg{a}"
   }

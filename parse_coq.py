@@ -61,6 +61,7 @@ state_line = begin_line
 state_column = begin_column
 at_beginning_of_coq_line = True
 any_found = False
+code = ""
 
 last_char = None
 
@@ -73,17 +74,24 @@ def reached_target():
                                         and state_column >= target_column)
 
 
+def escape_quotes(code):
+  return code.replace('"', '\\"')
+
+
 def yield_position():
     """
   Print the current position as `<line>.<col>,<line>.<col>`.
   Return `True` if we should end the main loop, else `False` to continue processing.
   """
-    global begin_line, begin_column, any_found
+    global begin_line, begin_column, any_found, code
 
     # print the current range to stdout
-    print(f'{begin_line}.{begin_column},{state_line}.{state_column} ', end='')
+    print(f'{begin_line}.{begin_column},{state_line}.{state_column} "{escape_quotes(code)}"')
+    sys.stdout.flush()
+    
     begin_line = state_line
     begin_column = state_column + 1
+    code = ""
     any_found = True
 
     return command == "next" or (command == "to" and reached_target())
@@ -91,6 +99,7 @@ def yield_position():
 
 # Iterate through all the characters from stdin
 for char in lazy_read_stdin():
+    code += char
     #print(f'{at_beginning_of_coq_line} - {state_line}:{state_column} {char}: [{" ".join(map(str, states))}]', file=sys.stderr)
 
     last_known_state = states[-1] if len(states) > 0 else None

@@ -4,6 +4,8 @@ declare-option -docstring '
   printf "%s" "${kak_source%/rc/*}"
 }
 
+
+
 provide-module coqide %(
 
 
@@ -234,11 +236,13 @@ define-command -docstring '
 }
 
 define-command -docstring '
-  
+  Send the next Coq command to the daemon and update the "to be processed" range.
+  Also jump to the new tip.
 ' -params 0 coqide-next %{
   evaluate-commands -draft -save-regs 'a' %{
-    execute-keys -draft %sh{
-      IFS=' .,|' read -r _ begin_line begin_column end_line end_column _ <<< "$kak_opt_coqide_to_be_processed_range"
+    coqide-to-be-processed-range
+    execute-keys %sh{
+      IFS=' .,|' read -r begin_line begin_column end_line end_column _ <<< "$kak_reg_a" 
       begin_line=${begin_line:-1}
       begin_column=${begin_column:-1}
       end_line=${end_line:-1}
@@ -248,22 +252,27 @@ define-command -docstring '
       if [ "$end_column" -gt 1 ]; then
         keys="${keys}${end_column}l"
       fi
-      keys="${keys}Ge<a-;>|python3 $kak_opt_coqide_source/parse_coq.py \$kak_cursor_line \$kak_cursor_column next<ret>\"ayu"
+      keys="${keys}Ge<a-;>" 
       
       echo "$keys"
     }
     evaluate-commands %sh{
-      IFS=' ' read -r range _ <<< "$kak_reg_a"
-      echo "set-register a '$range'"
+      case $kak_selection in
+        (*[![:space:]]*)
+          for line in "`python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column next <<< "$kak_selection"`"; do
+            range="${line%% *}"
+            code="${line#* }"
+
+            echo "coqide-push-to-be-processed '$range'"
+            echo "coqide-send-command 'next $range $code'"
+            echo "coqide-goto-tip"
+          done
+          ;;
+        (*) exit
+          ;;
+      esac
     }
-    coqide-push-to-be-processed "%reg{a}"
-    #echo -debug %opt{coqide_to_be_processed_range}
-    select %reg{a}
-    execute-keys -draft %{ <a-;>|sed -e 's/"/\\"/g' -e '1s/^/next $kak_reg_a "/' -e '$s/$/"/'<ret>"ayu }
-    coqide-send-command "%reg{a}"
   }
-  coqide-goto-tip
-  echo -debug %opt{coqide_to_be_processed_range}
 }
 
 define-command -docstring '
@@ -333,7 +342,21 @@ define-command -docstring '
 ' -hidden -params 1 coqide-push-to-be-processed %{
   echo -debug "coqide: push %arg{1} to to be processed range"
   set-option -add buffer coqide_to_be_processed_range "%arg{1}|coqide_to_be_processed_face"
-  #echo -debug %opt{coqide_to_be_processed_range}
+}
+
+define-command -docstring '
+  Returns the complete range to be processed in register `a`.
+' -hidden -params 0 coqide-to-be-processed-range %{
+  set-register a %sh{
+    read -r _ r1 <<< "$kak_opt_coqide_to_be_processed_range"
+    if [ -z "$r1" ]; then
+      echo ""
+    else
+      out=`(tr ' ' '\n' | sed -e '2p;$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+      IFS=' .,|' read -r begin_line begin_column _ _ _ _ _ end_line end_column _ <<< "$out"
+      echo "${begin_line}.${begin_column},${end_line}.${end_column}"
+    fi
+  }
 }
 
 

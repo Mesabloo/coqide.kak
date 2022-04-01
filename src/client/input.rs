@@ -12,9 +12,10 @@ use crate::session::{edited_file, input_fifo, session_id, Session};
 use crate::state::{Operation, State};
 
 use super::commands::decode::{command_decoder, CommandDecoder};
-use super::commands::types::ClientCommand;
+use super::commands::types::{ClientCommand, DisplayCommand};
 
 pub struct ClientInput {
+    cmd_disp_tx: mpsc::UnboundedSender<DisplayCommand>,
     coqtop_call_tx: mpsc::UnboundedSender<ProtocolCall>,
     stop_tx: watch::Sender<()>,
     reader: FramedRead<UnixStream, CommandDecoder>,
@@ -26,6 +27,7 @@ pub struct ClientInput {
 impl ClientInput {
     pub async fn new(
         session: Arc<Session>,
+        cmd_disp_tx: mpsc::UnboundedSender<DisplayCommand>,
         coqtop_call_tx: mpsc::UnboundedSender<ProtocolCall>,
         stop_tx: watch::Sender<()>,
         state: Arc<Mutex<State>>,
@@ -52,6 +54,7 @@ impl ClientInput {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
 
         Ok(Self {
+            cmd_disp_tx,
             coqtop_call_tx,
             stop_tx,
             reader: command_decoder(pipe),
@@ -64,23 +67,34 @@ impl ClientInput {
     pub async fn handle_commands_until(&mut self, mut stop: watch::Receiver<()>) -> io::Result<()> {
         loop {
             tokio::select! {
-                Ok(_) = stop.changed() => break Ok(()),
-                Some(cmd) = self.command_rx.recv(), if self.state.lock().unwrap().can_go_further() => {
-                    self.state.lock().unwrap().stop_processing();
-                    self.process_command(cmd).await?;
-                }
-                cmd = ClientCommand::decode_stream(&mut self.reader) => {
-                    match cmd? {
-                        None => {
-                            log::warn!("Junk byte ignored in stream");
-                        },
-                        Some(cmd) => {
-                            self.command_tx.send(cmd).map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+                            Ok(_) = stop.changed() => break Ok(()),
+                            Some(cmd) = self.command_rx.recv(), if self.state.lock().unwrap().can_go_further() => {
+                                self.state.lock().unwrap().stop_processing();
+                                self.process_command(cmd).await?;
+                            }
+                            cmd = ClientCommand::decode_stream(&mut self.reader) => {
+                                match cmd? {
+                                    None => {
+                                        log::warn!("Junk byte ignored in stream");
+                                    },
+                                    Some(cmd) => {
+            /*                            match &cmd {
+                                            ClientCommand::Next(range, _) => {
+                                                self.cmd_disp_tx
+                                                    .send(DisplayCommand::PushToBeProcessedRange(range.clone()))
+                                                    .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+                                            }
+                                            _ => {}
+                                        }
+            */
+                                        self.command_tx
+                                            .send(cmd)
+                                            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+                                    }
+                                }
+                            }
+                            else => {}
                         }
-                    }
-                }
-                else => {}
-            }
         }
     }
 

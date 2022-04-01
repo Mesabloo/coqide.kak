@@ -66,10 +66,15 @@ async fn main() {
     let mut coqtop_bridge = CoqIdeTop::spawn(session.clone(), coqtop_call_rx, coqtop_response_tx)
         .await
         .unwrap();
-    let mut client_bridge =
-        ClientInput::new(session.clone(), coqtop_call_tx, stop_tx, state.clone())
-            .await
-            .unwrap();
+    let mut client_bridge = ClientInput::new(
+        session.clone(),
+        kakoune_display_tx.clone(),
+        coqtop_call_tx,
+        stop_tx,
+        state.clone(),
+    )
+    .await
+    .unwrap();
     let mut response_processor = ResponseProcessor::new(
         session.clone(),
         coqtop_response_rx,

@@ -45,4 +45,8 @@ pub enum DisplayCommand {
         /// Given up goals.
         Vec<ProtocolValue>,
     ),
+    /// Remove a range from the to be processed range.
+    RemoveToBeProcessed(Range),
+    /// Add a range to the processed range.
+    AddToProcessed(Range),
 }

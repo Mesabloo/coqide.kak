@@ -39,6 +39,8 @@ impl KakouneUIUpdater {
                 Some(cmd) = self.kakoune_display_rx.recv() => {
                     match cmd {
                         DisplayCommand::ColorResult(richpp) => self.refresh_result_buffer_with(richpp, false).await?,
+                        DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
+                        DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
                         _ => todo!(),
                     }
                 }
@@ -50,6 +52,30 @@ impl KakouneUIUpdater {
 
     async fn refresh_processed_range(&mut self) -> io::Result<()> {
         Ok(())
+    }
+
+    async fn remove_to_be_processed(&mut self, range: Range) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-remove-to-be-processed '{}' }}"#,
+                edited_file(self.session.clone()),
+                range
+            ),
+        )
+        .await
+    }
+
+    async fn add_to_processed(&mut self, range: Range) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-add-to-processed '{}' }}"#,
+                edited_file(self.session.clone()),
+                range
+            ),
+        )
+        .await
     }
 
     async fn refresh_result_buffer_with(

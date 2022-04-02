@@ -229,7 +229,7 @@ define-command -docstring '
       exit
     fi
 
-    echo "echo -debug 'coqide: sending %§$1§ to daemon...'"
+    echo "echo -debug %§coqide: sending '${1//§//§§}' to daemon...§"
 
     echo "$1" >>"$kak_opt_coqide_fifo_input"
   }
@@ -259,12 +259,12 @@ define-command -docstring '
     evaluate-commands %sh{
       case $kak_selection in
         (*[![:space:]]*)
-          for line in "`python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column next <<< "$kak_selection"`"; do
+          for line in "$(python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column next <<< "$kak_selection")"; do
             range="${line%% *}"
             code="${line#* }"
 
             echo "coqide-push-to-be-processed '$range'"
-            echo "coqide-send-command 'next $range $code'"
+            echo "coqide-send-command %§next $range $code§"
             echo "coqide-goto-tip"
           done
           ;;
@@ -332,8 +332,8 @@ define-command -docstring '
 ' -hidden -params 0 coqide-pop-to-be-processed %{
   echo -debug "coqide: removing first range from to be processed range"
   evaluate-commands %sh{
-    IFS=' ' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
-    echo "set-option -remove buffer coqide_to_be_processed_range $range"
+    IFS=' |' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
+    echo "coqide-remove-to-be-processed $range"
   }
 }
 
@@ -345,6 +345,20 @@ define-command -docstring '
 }
 
 define-command -docstring '
+  Remove a given range from the "to be processed" range.
+' -hidden -params 1 coqide-remove-to-be-processed %{
+  echo -debug "coqide: remove %arg{1} from to be processed range"
+  set-option -remove buffer coqide_to_be_processed_range "%arg{1}|coqide_to_be_processed_face"
+}
+
+define-command -docstring '
+  Hello
+' -hidden -params 1 coqide-add-to-processed %{
+  echo -debug "coqide: add %arg{1} to the processed range"
+  set-option -add buffer coqide_processed_range "%arg{1}|coqide_processed_face"
+}
+
+define-command -docstring '
   Returns the complete range to be processed in register `a`.
 ' -hidden -params 0 coqide-to-be-processed-range %{
   set-register a %sh{
@@ -352,7 +366,7 @@ define-command -docstring '
     if [ -z "$r1" ]; then
       echo ""
     else
-      out=`(tr ' ' '\n' | sed -e '2p;$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+  out=`(tr ' ' '\n' | sed -e '2p;$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
       IFS=' .,|' read -r begin_line begin_column _ _ _ _ _ end_line end_column _ <<< "$out"
       echo "${begin_line}.${begin_column},${end_line}.${end_column}"
     fi

@@ -101,10 +101,12 @@ impl ResponseProcessor {
                             let mut state = self.state.lock().unwrap();
                             state.operations.push_front(Operation {
                                 state_id: new_state_id,
-                                range,
+                                range: range.clone(),
                             });
                             state.continue_processing();
                         }
+                        self.send_command(DisplayCommand::AddToProcessed(range))
+                            .await?;
 
                         log::debug!("Added code to processed operations");
 
@@ -122,6 +124,7 @@ impl ResponseProcessor {
                     }
                     _ => log::error!("[{}] {}", state_id, message.strip()),
                 },
+                FeedbackContent::Processed => {}
                 _ => log::debug!("Received feedback object [{}] {:?}", state_id, content),
             },
             _ => {}
@@ -131,6 +134,15 @@ impl ResponseProcessor {
     }
 
     // ---------------------------------
+
+    fn find_range(&self, state_id: i64) -> Option<Range> {
+        let state = self.state.lock().unwrap();
+        state
+            .operations
+            .iter()
+            .find(|op| op.state_id == state_id)
+            .map(|op| op.range.clone())
+    }
 
     async fn send_command(&mut self, command: DisplayCommand) -> io::Result<()> {
         self.command_display_tx

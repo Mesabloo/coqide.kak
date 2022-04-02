@@ -21,6 +21,7 @@ use super::xml_protocol::types::{ProtocolResult, ProtocolRichPP, ProtocolValue};
 
 pub struct ResponseProcessor {
     command_rx: broadcast::Receiver<ClientCommand>,
+    command_tx: broadcast::Sender<ClientCommand>,
     coqtop_response_rx: mpsc::UnboundedReceiver<ProtocolResult>,
     command_display_tx: mpsc::UnboundedSender<DisplayCommand>,
     state: Arc<Mutex<State>>,
@@ -30,12 +31,14 @@ impl ResponseProcessor {
     pub fn new(
         _session: Arc<Session>,
         command_rx: broadcast::Receiver<ClientCommand>,
+        command_tx: broadcast::Sender<ClientCommand>,
         coqtop_response_rx: mpsc::UnboundedReceiver<ProtocolResult>,
         command_display_tx: mpsc::UnboundedSender<DisplayCommand>,
         state: Arc<Mutex<State>>,
     ) -> Self {
         Self {
             command_rx,
+            command_tx,
             coqtop_response_rx,
             command_display_tx,
             state,
@@ -104,6 +107,47 @@ impl ResponseProcessor {
 
                         log::info!("Popped last state from processed ones");
                     }
+                    (_, Some(ClientCommand::BackTo(Operation { state_id, .. }))) => {
+                        let to_remove = {
+                            let mut state = self.state.lock().unwrap();
+                            let mut ops_to_remove = Vec::new();
+
+                            loop {
+                                if let Some(op) = state.operations.front() {
+                                    if op.state_id == state_id {
+                                        break;
+                                    } else {
+                                        ops_to_remove.push(state.operations.pop_front().unwrap());
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            if error_state == ErrorState::Ok {
+                                state.last_error_range = None;
+                            }
+                            state.continue_processing();
+
+                            ops_to_remove
+                        };
+
+                        if error_state == ErrorState::Ok {
+                            self.send_command(DisplayCommand::RefreshErrorRange(None))
+                                .await?;
+                            self.send_command(DisplayCommand::ColorResult(
+                                ProtocolRichPP::RichPP(vec![]),
+                                false,
+                            ))
+                            .await?;
+                        }
+                        for op in to_remove {
+                            self.send_command(DisplayCommand::RemoveProcessed(op.range.clone()))
+                                .await?;
+                            self.send_command(DisplayCommand::RemoveToBeProcessed(op.range))
+                                .await?;
+                        }
+                    }
                     (Optional(None), Some(ClientCommand::ShowGoals(_))) => {
                         {
                             let mut state = self.state.lock().unwrap();
@@ -166,6 +210,8 @@ impl ResponseProcessor {
                     state.waiting.pop_back()
                 };
 
+                log::debug!("Failed with last command being {:?}", last_command);
+
                 match last_command {
                     _ if error_state != ErrorState::Ok => {
                         let mut state = self.state.lock().unwrap();
@@ -178,45 +224,28 @@ impl ResponseProcessor {
                         // TODO: show error
                     }
                     Some(ClientCommand::Next(range, _) | ClientCommand::ShowGoals(range)) => {
+                        self.discard_states_until(safe_state_id).await?;
+                        self.handle_error(Some(range.clone()), message, false)
+                            .await?;
+
                         {
                             let mut state = self.state.lock().unwrap();
-                            state.error_state = ErrorState::ClearQueue;
-                            state.last_error_range = Some(range.clone());
                             state.continue_processing();
                         }
-
-                        tokio::task::block_in_place(|| loop {
-                            match self.command_rx.try_recv() {
-                                Ok(_) => {}
-                                Err(TryRecvError::Empty) => {
-                                    log::debug!(
-                                        "Command channel is now empty. Moving towards error state."
-                                    );
-
-                                    let mut state = self.state.lock().unwrap();
-                                    state.error_state = ErrorState::Error;
-                                    break Ok(());
-                                }
-                                Err(e) => break Err(e),
-                            }
-                        })
-                        .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
-
+                    }
+                    Some(ClientCommand::BackTo(op)) => {
                         self.discard_states_until(safe_state_id).await?;
-
-                        self.send_command(DisplayCommand::ColorResult(message.error(), false))
-                            .await?;
-                        self.send_command(DisplayCommand::RemoveToBeProcessed(range))
-                            .await?;
-                        self.send_command(DisplayCommand::RefreshErrorRange(Some(range)))
-                            .await?;
+                        self.handle_error(Some(op.range), message, false).await?;
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.continue_processing();
+                        }
                     }
                     c => {
                         log::error!("Command {:?} caused a failure", c);
                     }
                 }
             }
-            _ if error_state != ErrorState::Ok => {}
             Feedback(_, _, StateId(state_id), content) => {
                 let last_op = {
                     let state = self.state.lock().unwrap();
@@ -228,6 +257,16 @@ impl ResponseProcessor {
                     // NOTE: ignore messages which are for previous states
                     _ => match content {
                         FeedbackContent::Message(message_type, message) => match message_type {
+                            MessageType::Error => {
+                                //self.discard_states_until(state_id).await?;
+                                //self.handle_error(None, message, true).await?;
+                                self.send_command(DisplayCommand::ColorResult(
+                                    message.error(),
+                                    true,
+                                ))
+                                .await?;
+                            }
+                            _ if error_state != ErrorState::Ok => {}
                             MessageType::Notice | MessageType::Info => {
                                 self.send_command(DisplayCommand::ColorResult(message, true))
                                     .await?;
@@ -240,38 +279,8 @@ impl ResponseProcessor {
                                 ))
                                 .await?;
                             }
-                            MessageType::Error => {
-                                /*                                {
-                                                                    let mut state = self.state.lock().unwrap();
-                                                                    state.error_state = ErrorState::ClearQueue;
-                                                                }
-
-                                                                tokio::task::block_in_place(|| loop {
-                                                                    match self.command_rx.try_recv() {
-                                                                        Ok(_) => {}
-                                                                        Err(TryRecvError::Empty) => {
-                                                                            log::debug!(
-                                                                                "Command channel is now empty. Moving towards error state."
-                                                                            );
-
-                                                                            let mut state = self.state.lock().unwrap();
-                                                                            state.error_state = ErrorState::Error;
-                                                                            break Ok(());
-                                                                        }
-                                                                        Err(e) => break Err(e),
-                                                                    }
-                                                                })
-                                                                .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
-
-                                                                self.discard_states_until(state_id).await?;
-                                */
-                                self.send_command(DisplayCommand::ColorResult(
-                                    message.error(),
-                                    true,
-                                ))
-                                .await?;
-                            }
                         },
+                        _ if error_state != ErrorState::Ok => {}
                         _ => log::debug!("Received feedback object @{}: {:?}", state_id, content),
                     },
                 }
@@ -283,6 +292,62 @@ impl ResponseProcessor {
     }
 
     // ---------------------------------
+
+    async fn handle_error(
+        &mut self,
+        error_range: Option<Range>,
+        message: ProtocolRichPP,
+        append: bool,
+    ) -> io::Result<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.error_state = ErrorState::ClearQueue;
+            state.last_error_range = error_range.clone();
+        }
+
+        log::debug!("Handling error with range begin {:?}", error_range);
+
+        loop {
+            match self.command_rx.try_recv() {
+                Ok(_) => {}
+                Err(TryRecvError::Empty) => {
+                    log::debug!("Command channel is now empty. Moving towards error state.");
+
+                    let mut state = self.state.lock().unwrap();
+                    state.error_state = ErrorState::Error;
+
+                    let safe_state = state.operations.front();
+                    if let Some(op) = safe_state {
+                        self.command_tx
+                            .send(ClientCommand::BackTo(op.clone()))
+                            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+                        // self.command_tx
+                        //     .send(ClientCommand::ShowGoals(op.range))
+                        //     .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+                    }
+
+                    break Ok(());
+                }
+                Err(e) => break Err(e),
+            }
+        }
+        .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+
+        self.send_command(DisplayCommand::ColorResult(message.error(), append))
+            .await?;
+        if let Some(range) = error_range.clone() {
+            log::debug!("Removing spurious range");
+
+            self.send_command(DisplayCommand::RemoveToBeProcessed(range.clone()))
+                .await?;
+            self.send_command(DisplayCommand::RemoveProcessed(range))
+                .await?;
+            self.send_command(DisplayCommand::RefreshErrorRange(error_range))
+                .await?;
+        }
+
+        Ok(())
+    }
 
     async fn discard_states_until(&mut self, state_id: i64) -> io::Result<()> {
         let mut operations = {
@@ -323,6 +388,8 @@ impl ResponseProcessor {
     }
 
     async fn send_command(&mut self, command: DisplayCommand) -> io::Result<()> {
+        log::debug!("Sending UI command {:?}", command);
+
         self.command_display_tx
             .send(command)
             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))

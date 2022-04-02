@@ -1,6 +1,7 @@
 use crate::{
     coqtop::xml_protocol::types::{ProtocolRichPP, ProtocolValue},
     range::Range,
+    state::Operation,
 };
 
 #[derive(Debug, Clone)]
@@ -27,6 +28,8 @@ pub enum ClientCommand {
     Hints,
     /// Ask the [`COQTOP`] process to output the current goals.
     ShowGoals(Range),
+    /// Internal use: go back to the given state ID.
+    BackTo(Operation),
 }
 
 /// The type of commands that can be sent back to Kakoune.

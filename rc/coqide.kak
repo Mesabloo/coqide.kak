@@ -37,6 +37,10 @@ declare-option -docstring '
 ' -hidden range-specs coqide_result_highlight # %val{timestamp}
 
 declare-option -docstring '
+  The last timestamp the buffer was checked for change.
+' -hidden int coqide_last_checked_timestamp # %val{timestamp}
+
+declare-option -docstring '
   The PID of the CoqIDE daemon.
 ' -hidden str coqide_pid
 declare-option -docstring '
@@ -167,10 +171,12 @@ define-command -docstring '
       hook -once -group coqide buffer=$kak_opt_coqide_buffer BufClose .* coqide-stop
       hook -once -group coqide buffer=$kak_opt_coqide_buffer ClientClose .* coqide-stop
       hook -once -group coqide buffer=$kak_opt_coqide_buffer KakEnd .* coqide-stop
-    "  
-    #  hook -group coqide buffer=$kak_opt_coqide_buffer InsertChar .* coqide-on-text-change
-    #  hook -group coqide buffer=$kak_opt_coqide_buffer InsertDelete .* coqide-on-text-change
-    # " # These last two hooks unfortunately do not take care of
+      
+      hook -group coqide buffer=$kak_opt_coqide_buffer InsertChar .* coqide-on-text-change
+      hook -group coqide buffer=$kak_opt_coqide_buffer InsertDelete .* coqide-on-text-change
+      hook -group coqide buffer=$kak_opt_coqide_buffer NormalIdle .* coqide-on-idle-text-change
+      hook -group coqide buffer=$kak_opt_coqide_buffer InsertIdle .* coqide-on-idle-text-change
+    " # These last two hooks unfortunately do not take care of
       # text editing in normal mode (e.g. when cutting text).
       #
       # It would be great to have a hook for every buffer modification.
@@ -180,6 +186,8 @@ define-command -docstring '
   set-option buffer coqide_processed_range %val{timestamp}
   set-option buffer coqide_error_range %val{timestamp}
   set-option buffer coqide_admitted_range %val{timestamp}
+
+  set-option buffer coqide_last_checked_timestamp %val{timestamp}
 
   add-highlighter -override buffer/coqide_to_be_processed ranges coqide_to_be_processed_range
   add-highlighter -override buffer/coqide_processed ranges coqide_processed_range
@@ -325,6 +333,62 @@ define-command -docstring '
   }
 }
 
+#############################################################################
+
+define-command -docstring '
+  Check if text changed before tip on idle.
+' -hidden -params 0 coqide-on-idle-text-change %{
+  evaluate-commands %sh{
+    if [ "$kak_opt_coqide_last_checked_timestamp" -ne "$kak_timestamp" ]; then
+      echo "coqide-on-text-change"
+    fi
+  }
+  set-option buffer coqide_last_checked_timestamp %val{timestamp}
+}
+
+define-command -docstring '
+  Check if text has been changed before the tip.
+  If this is the case, backtrack to the state before the cursor position.
+' -hidden -params 0 coqide-on-text-change %{
+  evaluate-commands -draft %{
+    execute-keys "$[ $kak_main_reg_hash -eq 1 ]"
+    evaluate-commands %sh{
+      range=`(tr ' ' '\n' | sed -e '$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+      #                             ^^^ remove all but the last line
+      IFS=' |.,' read -r _ _ eline_p ecol_p _ <<< "$range"
+      eline_p=${eline_p:-1}
+      ecol_p=${ecol_p:-1}
+      
+      IFS=' |.,' read -r _ _ _ eline_e ecol_e _ <<< "$kak_opt_coqide_error_range"
+      eline_e=${eline_e:-1}
+      ecol_e=${ecol_e:-1}
+      
+      IFS=' |.,' read -r sline scol _ _ _ <<< "$kak_selection_desc"
+      sline=${sline:-1}
+      scol=${scol:-1}
+
+      if [ $sline -lt $eline_e ] || [ $sline -eq $eline_e -a $scol -lt $ecol_e ]; then
+        echo "coqide-invalidate-error"
+      fi
+      if [ $sline -lt $eline_p ] || [ $sline -eq $eline_p -a $scol -lt $ecol_p ]; then
+        echo "coqide-invalidate-state $sline $scol"
+      fi 
+    }
+  }
+}
+
+define-command -docstring '
+  Remove the last error encountered when editing before it.
+' -hidden -params 0 coqide-invalidate-error %{
+  coqide-send-command "ignore-error"
+}
+
+define-command -docstring '
+  Return to the state indicated by the two parameters (in order: buffer line and column).
+' -hidden -params 2 coqide-invalidate-state %{
+  coqide-send-command "rewind-to %arg{1} %arg{2}"
+}
+
 ##############################################################################
 
 define-command -docstring '
@@ -375,7 +439,7 @@ define-command -docstring '
 ' -hidden -params 0 coqide-pop-to-be-processed %{
   echo -debug "coqide: removing first range from to be processed range"
   evaluate-commands %sh{
-  IFS=' |' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
+    IFS=' |' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
     echo "coqide-remove-to-be-processed $range"
   }
 }

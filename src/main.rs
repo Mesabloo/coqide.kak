@@ -76,10 +76,12 @@ async fn main() {
     )
     .await
     .unwrap();
-    let command_rx = client_bridge.command_tx.subscribe();
+    let command_tx = client_bridge.command_tx.clone();
+    let command_rx = command_tx.subscribe();
     let mut response_processor = ResponseProcessor::new(
         session.clone(),
         command_rx,
+        command_tx,
         coqtop_response_rx,
         kakoune_display_tx,
         state.clone(),

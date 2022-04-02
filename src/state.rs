@@ -5,7 +5,7 @@ use std::{
 
 use crate::{client::commands::types::ClientCommand, range::Range};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Operation {
     pub state_id: i64,
     pub range: Range,

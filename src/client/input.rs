@@ -122,7 +122,9 @@ impl ClientInput {
             ClientCommand::Next(range, code) if error_state == ErrorState::Ok => {
                 self.process_next(range, code).await
             }
-            ClientCommand::IgnoreError => todo!(),
+            ClientCommand::IgnoreError if error_state == ErrorState::Error => {
+                self.process_ignore_error().await
+            }
             ClientCommand::Hints => todo!(),
             ClientCommand::ShowGoals(_) => self.process_show_goals().await,
             ClientCommand::Next(range, _) => {
@@ -132,6 +134,11 @@ impl ClientInput {
                     .send(DisplayCommand::RemoveToBeProcessed(range))
                     .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))
             }
+            ClientCommand::IgnoreError => {
+                self.state.lock().unwrap().continue_processing();
+                Ok(())
+            }
+            ClientCommand::BackTo(state_id) => self.process_back_to(state_id).await,
             _ => todo!(),
         }
     }
@@ -179,6 +186,25 @@ impl ClientInput {
 
     async fn process_show_goals(&mut self) -> io::Result<()> {
         self.send_call(ProtocolCall::Goal).await
+    }
+
+    async fn process_ignore_error(&mut self) -> io::Result<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.last_error_range = None;
+            state.error_state = ErrorState::Ok;
+            state.continue_processing();
+
+            log::debug!("I am supposed to be printed!");
+        }
+
+        self.cmd_disp_tx
+            .send(DisplayCommand::RefreshErrorRange(None))
+            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))
+    }
+
+    async fn process_back_to(&mut self, op: Operation) -> io::Result<()> {
+        self.send_call(ProtocolCall::EditAt(op.state_id)).await
     }
 
     // --------------------------------------

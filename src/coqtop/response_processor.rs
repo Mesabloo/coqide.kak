@@ -3,19 +3,23 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{
+    broadcast::{self, error::TryRecvError},
+    mpsc, watch,
+};
 
 use crate::{
     client::commands::types::{ClientCommand, DisplayCommand},
     coqtop::xml_protocol::types::{FeedbackContent, MessageType},
     range::Range,
     session::Session,
-    state::{Operation, State},
+    state::{ErrorState, Operation, State},
 };
 
 use super::xml_protocol::types::{ProtocolResult, ProtocolRichPP, ProtocolValue};
 
 pub struct ResponseProcessor {
+    command_rx: broadcast::Receiver<ClientCommand>,
     coqtop_response_rx: mpsc::UnboundedReceiver<ProtocolResult>,
     command_display_tx: mpsc::UnboundedSender<DisplayCommand>,
     state: Arc<Mutex<State>>,
@@ -24,11 +28,13 @@ pub struct ResponseProcessor {
 impl ResponseProcessor {
     pub fn new(
         _session: Arc<Session>,
+        command_rx: broadcast::Receiver<ClientCommand>,
         coqtop_response_rx: mpsc::UnboundedReceiver<ProtocolResult>,
         command_display_tx: mpsc::UnboundedSender<DisplayCommand>,
         state: Arc<Mutex<State>>,
     ) -> Self {
         Self {
+            command_rx,
             coqtop_response_rx,
             command_display_tx,
             state,
@@ -52,11 +58,16 @@ impl ResponseProcessor {
         use ProtocolResult::*;
         use ProtocolValue::*;
 
+        let error_state = {
+            let state = self.state.lock().unwrap();
+            state.error_state.clone()
+        };
+
         match resp {
             Good(value) => {
-                let (last_command, error_state) = {
+                let last_command = {
                     let mut state = self.state.lock().unwrap();
-                    (state.waiting.pop_back(), state.last_error.clone())
+                    state.waiting.pop_back()
                 };
 
                 match (value, last_command) {
@@ -75,7 +86,8 @@ impl ResponseProcessor {
                         let old_op = {
                             let mut state = self.state.lock().unwrap();
                             let old_op = state.operations.pop_front();
-                            state.last_error = None;
+                            state.last_error_range = None;
+                            state.error_state = ErrorState::Ok;
                             state.continue_processing();
                             old_op
                         };
@@ -91,11 +103,24 @@ impl ResponseProcessor {
 
                         log::info!("Popped last state from processed ones");
                     }
-                    _ if error_state.is_some() => {
-                        // TODO: empty incoming queue (need a reference to it)
-                        // TODO: report error range
-                        // TODO: continue processing
+                    (Optional(None), Some(ClientCommand::ShowGoals)) => {
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.continue_processing();
+                        }
+                        self.send_command(DisplayCommand::OutputGoals(vec![], vec![], vec![]))
+                            .await?;
                     }
+                    (Optional(Some(box Goals(fg, bg, _, gg))), Some(ClientCommand::ShowGoals)) => {
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.continue_processing();
+                        }
+                        self.send_command(DisplayCommand::OutputGoals(fg, bg, gg))
+                            .await?;
+                    }
+
+                    _ if error_state != ErrorState::Ok => {}
                     (
                         Pair(box StateId(state_id), box Pair(box union, _)),
                         Some(ClientCommand::Next(range, _)),
@@ -125,44 +150,97 @@ impl ResponseProcessor {
 
                         log::debug!("Added code to processed operations");
                     }
-                    (Optional(None), Some(ClientCommand::ShowGoals)) => {
-                        {
-                            let mut state = self.state.lock().unwrap();
-                            state.continue_processing();
-                        }
-                        self.send_command(DisplayCommand::OutputGoals(vec![], vec![], vec![]))
-                            .await?;
-                    }
-                    (Optional(Some(box Goals(fg, bg, _, gg))), Some(ClientCommand::ShowGoals)) => {
-                        {
-                            let mut state = self.state.lock().unwrap();
-                            state.continue_processing();
-                        }
-                        self.send_command(DisplayCommand::OutputGoals(fg, bg, gg))
-                            .await?;
-                    }
                     _ => todo!(),
                 }
             }
-            Fail(_, _, _, _) => todo!(),
-            Feedback(_, _, StateId(state_id), content) => match content {
-                FeedbackContent::Message(message_type, message) => match message_type {
-                    MessageType::Notice | MessageType::Info => {
-                        self.send_command(DisplayCommand::ColorResult(message, true))
+            Fail(_, _, StateId(safe_state_id), message) => {
+                let last_command = {
+                    let mut state = self.state.lock().unwrap();
+                    state.waiting.pop_back()
+                };
+
+                match last_command {
+                    _ if error_state != ErrorState::Ok => {}
+                    Some(ClientCommand::Init) => {
+                        // TODO: failed to init
+                    }
+                    Some(ClientCommand::Query(_)) => {
+                        // TODO: show error
+                    }
+                    Some(ClientCommand::Next(range, _)) => {
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.error_state = ErrorState::ClearQueue;
+                            state.last_error_range = Some(range.clone());
+                            state.continue_processing();
+                        }
+
+                        tokio::task::block_in_place(|| loop {
+                            match self.command_rx.try_recv() {
+                                Ok(_) => {}
+                                Err(TryRecvError::Empty) => {
+                                    log::debug!(
+                                        "Command channel is now empty. Moving towards error state."
+                                    );
+
+                                    let mut state = self.state.lock().unwrap();
+                                    state.error_state = ErrorState::Error;
+                                    break Ok(());
+                                }
+                                Err(e) => break Err(e),
+                            }
+                        })
+                        .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+
+                        self.send_command(DisplayCommand::ColorResult(message.error(), false))
+                            .await?;
+                        self.send_command(DisplayCommand::RemoveToBeProcessed(range))
+                            .await?;
+                        self.send_command(DisplayCommand::RefreshErrorRange(Some(range)))
                             .await?;
                     }
-                    MessageType::Debug => log::debug!("@{}: {}", state_id, message.strip()),
-                    MessageType::Warning => {
-                        self.send_command(DisplayCommand::ColorResult(message.warning(), true))
-                            .await?;
+                    _ => {
+                        // ??? don't know what caused the error
+                        todo!()
                     }
-                    MessageType::Error => {
-                        self.send_command(DisplayCommand::ColorResult(message.error(), true))
-                            .await?;
-                    }
-                },
-                _ => log::debug!("Received feedback object @{}: {:?}", state_id, content),
-            },
+                }
+            }
+            _ if error_state != ErrorState::Ok => {}
+            Feedback(_, _, StateId(state_id), content) => {
+                let last_op = {
+                    let state = self.state.lock().unwrap();
+                    state.operations.front().cloned()
+                };
+
+                match last_op {
+                    Some(Operation { state_id: id, .. }) if id != state_id => {}
+                    // NOTE: ignore messages which are for previous states
+                    _ => match content {
+                        FeedbackContent::Message(message_type, message) => match message_type {
+                            MessageType::Notice | MessageType::Info => {
+                                self.send_command(DisplayCommand::ColorResult(message, true))
+                                    .await?;
+                            }
+                            MessageType::Debug => log::debug!("@{}: {}", state_id, message.strip()),
+                            MessageType::Warning => {
+                                self.send_command(DisplayCommand::ColorResult(
+                                    message.warning(),
+                                    true,
+                                ))
+                                .await?;
+                            }
+                            MessageType::Error => {
+                                self.send_command(DisplayCommand::ColorResult(
+                                    message.error(),
+                                    true,
+                                ))
+                                .await?;
+                            }
+                        },
+                        _ => log::debug!("Received feedback object @{}: {:?}", state_id, content),
+                    },
+                }
+            }
             _ => {}
         }
 

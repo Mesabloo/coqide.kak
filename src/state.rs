@@ -5,15 +5,24 @@ use std::{
 
 use crate::{client::commands::types::ClientCommand, range::Range};
 
+#[derive(Clone)]
 pub struct Operation {
     pub state_id: i64,
     pub range: Range,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ErrorState {
+    Ok,
+    Error,
+    ClearQueue,
+}
+
 pub struct State {
     pub operations: VecDeque<Operation>,
     pub waiting: VecDeque<ClientCommand>,
-    pub last_error: Option<Range>,
+    pub last_error_range: Option<Range>,
+    pub error_state: ErrorState,
     go_further: AtomicBool,
 }
 
@@ -22,7 +31,8 @@ impl State {
         Self {
             operations: VecDeque::new(),
             waiting: VecDeque::new(),
-            last_error: None,
+            last_error_range: None,
+            error_state: ErrorState::Ok,
             go_further: AtomicBool::new(true),
         }
     }

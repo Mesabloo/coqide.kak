@@ -45,7 +45,7 @@ impl KakouneUIUpdater {
                         DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
                         DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
                         DisplayCommand::RefreshErrorRange(range) => self.refresh_error_range(range).await?,
-                        _ => todo!(),
+                        DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
                     }
                 }
             }
@@ -53,6 +53,18 @@ impl KakouneUIUpdater {
     }
 
     // ---------------------
+
+    async fn remove_to_be_processed(&mut self, range: Range) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-remove-to-be-processed '{}' }}"#,
+                edited_file(self.session.clone()),
+                range
+            ),
+        )
+        .await
+    }
 
     async fn remove_processed(&mut self, range: Range) -> io::Result<()> {
         kak(
@@ -79,7 +91,22 @@ impl KakouneUIUpdater {
     }
 
     async fn refresh_error_range(&mut self, range: Option<Range>) -> io::Result<()> {
-        Ok(())
+        let coq_file = edited_file(self.session.clone());
+
+        kak(
+            &session_id(self.session.clone()),
+            match range {
+                None => format!(
+                    r#"evaluate-commands -buffer '{0}' %{{ coqide-remove-error-range }}"#,
+                    coq_file
+                ),
+                Some(range) => format!(
+                    r#"evaluate-commands -buffer '{0}' %{{ coqide-set-error-range '{1}' }}"#,
+                    coq_file, range
+                ),
+            },
+        )
+        .await
     }
 
     async fn refresh_result_buffer_with(
@@ -108,10 +135,10 @@ impl KakouneUIUpdater {
         kak(
             &session_id(self.session.clone()),
             format!(
-                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" {2} }}"#,
+                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" "{2}" }}"#,
                 edited_file(self.session.clone()),
                 result_buffer,
-                colors.join(" ")
+                colors.join("\" \"")
             ),
         )
         .await?;
@@ -177,10 +204,10 @@ impl KakouneUIUpdater {
         kak(
             &session_id(self.session.clone()),
             format!(
-                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-goal-buffer "{1}" {2} }}"#,
+                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-goal-buffer "{1}" "{2}" }}"#,
                 edited_file(self.session.clone()),
                 goal_buffer,
-                colors.join(" ")
+                colors.join("\" \"")
             ),
         )
         .await

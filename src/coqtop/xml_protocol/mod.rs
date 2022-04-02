@@ -45,7 +45,7 @@ impl ProtocolRichPP {
             parts
                 .into_iter()
                 .map(|part| match part {
-                    Raw(str) => Warning(str),
+                    Raw(str) => Error(str),
                     _ => unreachable!(),
                 })
                 .collect::<Vec<_>>(),

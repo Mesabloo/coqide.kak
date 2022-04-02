@@ -120,7 +120,7 @@ set-face global coqide_variable @variable
 set-face global coqide_reference @variable
 set-face global coqide_path @module
 set-face global coqide_warning yellow+b
-set-face global coqide_error +b@coqide_error_face
+set-face global coqide_error red+b
 
 
 
@@ -334,10 +334,9 @@ define-command -docstring '
 ' -hidden -params 1.. coqide-refresh-goal-buffer %{
   echo -debug "coqide: refreshing goal buffer"
   evaluate-commands -buffer "%opt{coqide_goal_buffer}" %{
-    echo -debug "coqide: refreshing result buffer with new message"
     execute-keys "%%|cat<space>%arg{1}<ret>"
     evaluate-commands %sh{
-      if [ "$#" -eq 1 ]; then
+      if [ "$#" -eq 1 -o -z "$2" ]; then
         echo "set-option buffer coqide_goal_highlight %val{timestamp}"
       else
         shift
@@ -357,10 +356,11 @@ define-command -docstring '
   evaluate-commands -buffer "%opt{coqide_result_buffer}" %{
     execute-keys "%%|cat<space>%arg{1}<ret>"
     evaluate-commands %sh{
-      if [ "$#" -eq 1 ]; then
+      if [ "$#" -eq 1 -o -z "$2" ]; then
         echo "set-option buffer coqide_result_highlight %val{timestamp}"
       else
-        echo "set-option buffer coqide_result_highlight %val{timestamp} " "$@"
+        shift
+        echo "set-option buffer coqide_result_highlight %val{timestamp}" "$@"
       fi
     }
   }
@@ -439,6 +439,18 @@ define-command -docstring '
       echo "${begin_line}.${begin_column},${end_line}.${end_column}"
     fi
   }
+}
+
+define-command -docstring '
+  Remove the current error range.
+' -hidden -params 0 coqide-remove-error-range %{
+  set-option buffer coqide_error_range %val{timestamp}
+}
+
+define-command -docstring '
+
+' -hidden -params 1 coqide-set-error-range %{
+  set-option buffer coqide_error_range %val{timestamp} "%arg{1}|coqide_error_face"
 }
 
 ##################################################################

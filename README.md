@@ -69,7 +69,7 @@ This plugin comes with several default options, but some of them can be altered:
     - `coqide_admitted_face` is the `face` used to highlight parts of the code which contain admitted proofs, as in CoqIDE.
       This defaults to `default,yellow` so as to be visual and mimic CoqIDE.
     - `coqide_error` is the `face` used to color the error messages in the result buffer.
-      Defaults to `+b@coqide_error_face` for consistency.
+      Defaults to `red+b` for consistency with `coqide_error_face`.
     - `coqide_warning` is the `face` used to color the warning messages in the result buffer.
       Defaults to `yellow+b`.
   - Code coloring:

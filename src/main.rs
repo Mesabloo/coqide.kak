@@ -18,8 +18,6 @@ use tokio::{
     sync::{mpsc, watch},
 };
 
-use crate::{coqtop::response_processor, kakoune::ui_updater};
-
 mod client;
 mod coqtop;
 mod files;
@@ -69,15 +67,10 @@ async fn main() {
     let mut coqtop_bridge = CoqIdeTop::spawn(session.clone(), coqtop_call_rx, coqtop_response_tx)
         .await
         .unwrap();
-    let mut client_bridge = ClientInput::new(
-        session.clone(),
-        kakoune_display_tx.clone(),
-        coqtop_call_tx,
-        stop_tx,
-        state.clone(),
-    )
-    .await
-    .unwrap();
+    let mut client_bridge =
+        ClientInput::new(session.clone(), coqtop_call_tx, stop_tx, state.clone())
+            .await
+            .unwrap();
     let mut response_processor = ResponseProcessor::new(
         session.clone(),
         coqtop_response_rx,
@@ -86,10 +79,10 @@ async fn main() {
     );
     let mut ui_updater = KakouneUIUpdater::new(session.clone(), kakoune_display_rx);
 
-    let mut stop_rx1 = stop_rx.clone();
-    let mut stop_rx2 = stop_rx.clone();
-    let mut stop_rx3 = stop_rx.clone();
-    let mut stop_rx4 = stop_rx.clone();
+    let stop_rx1 = stop_rx.clone();
+    let stop_rx2 = stop_rx.clone();
+    let stop_rx3 = stop_rx.clone();
+    let stop_rx4 = stop_rx.clone();
     let handle1 = tokio::spawn(async move {
         coqtop_bridge.transmit_until(stop_rx1).await?;
         Ok::<_, io::Error>(coqtop_bridge)

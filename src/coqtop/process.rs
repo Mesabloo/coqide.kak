@@ -4,7 +4,7 @@ use tokio::{
     io::AsyncWriteExt,
     join,
     net::{TcpListener, TcpStream},
-    process::{Child, ChildStdin, ChildStdout, Command},
+    process::{Child, Command},
     sync::{mpsc, watch},
 };
 use tokio_util::codec::FramedRead;
@@ -63,8 +63,7 @@ impl CoqIdeTop {
         ];
         // TODO: add flags found in a `_CoqProject` file
 
-        let mut coqidetop =
-            async { coqidetop(&temporary_folder(session.clone()), ports, flags).await };
+        let coqidetop = async { coqidetop(&temporary_folder(session.clone()), ports, flags).await };
 
         let (main_r, main_w, coqidetop) = join!(main_r, main_w, coqidetop);
         // NOTE: because we are using TCP streams, we don't care about the second parameter returned by [`TcpListener::accept`]

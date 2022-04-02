@@ -380,7 +380,6 @@ impl ProtocolResult {
 impl ProtocolRichPP {
     /// Tries to decode a [`ProtocolRichPP`] from a [`XMLNode`].
     pub fn decode(xml: XMLNode) -> io::Result<Self> {
-        let raw = String::new();
         let inner1 = xml
             .get_child("_".to_string())
             .ok_or_else(|| {

@@ -1,19 +1,15 @@
 use std::{
     io,
-    path::Path,
     sync::{Arc, Mutex},
 };
 
-use combine::parser::choice::Optional;
-use tokio::fs::{File, OpenOptions};
 use tokio::sync::{mpsc, watch};
 
 use crate::{
     client::commands::types::{ClientCommand, DisplayCommand},
     coqtop::xml_protocol::types::{FeedbackContent, MessageType},
-    files::result_file,
     range::Range,
-    session::{temporary_folder, Session},
+    session::Session,
     state::{Operation, State},
 };
 
@@ -90,11 +86,10 @@ impl ResponseProcessor {
                             }
                             _ => {}
                         }
+                        self.send_command(DisplayCommand::RefreshErrorRange(None))
+                            .await?;
 
                         log::info!("Popped last state from processed ones");
-
-                        // TODO: refresh processed range
-                        // TODO: remove error range
                     }
                     _ if error_state.is_some() => {
                         // TODO: empty incoming queue (need a reference to it)
@@ -103,7 +98,7 @@ impl ResponseProcessor {
                     }
                     (
                         Pair(box StateId(state_id), box Pair(box union, _)),
-                        Some(ClientCommand::Next(range, code)),
+                        Some(ClientCommand::Next(range, _)),
                     ) => {
                         self.send_command(DisplayCommand::ColorResult(
                             ProtocolRichPP::RichPP(vec![]),
@@ -123,6 +118,8 @@ impl ResponseProcessor {
                             });
                             state.continue_processing();
                         }
+                        self.send_command(DisplayCommand::RefreshErrorRange(None))
+                            .await?;
                         self.send_command(DisplayCommand::AddToProcessed(range))
                             .await?;
 
@@ -157,8 +154,7 @@ impl ResponseProcessor {
                     MessageType::Debug => log::debug!("@{}: {}", state_id, message.strip()),
                     _ => log::error!("@{}: {}", state_id, message.strip()),
                 },
-                FeedbackContent::Processed => {}
-                _ => log::debug!("Received feedback object [{}] {:?}", state_id, content),
+                _ => log::debug!("Received feedback object @{}: {:?}", state_id, content),
             },
             _ => {}
         }

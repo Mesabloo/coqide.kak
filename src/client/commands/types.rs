@@ -32,8 +32,6 @@ pub enum ClientCommand {
 /// The type of commands that can be sent back to Kakoune.
 #[derive(Debug, Clone)]
 pub enum DisplayCommand {
-    /// Refresh the processed range.
-    RefreshProcessedRange(Range),
     /// Refresh the error range.
     RefreshErrorRange(Option<Range>),
     /// Output the result with colors.
@@ -47,8 +45,6 @@ pub enum DisplayCommand {
         /// Given up goals.
         Vec<ProtocolValue>,
     ),
-    /// Remove a range from the to be processed range.
-    RemoveToBeProcessed(Range),
     /// Add a range to the processed range.
     AddToProcessed(Range),
     /// Remove a range from the processed code.

@@ -1,4 +1,4 @@
-use std::{io, path::Path, sync::Arc};
+use std::{io, sync::Arc};
 
 use tokio::{
     fs::{File, OpenOptions},
@@ -40,7 +40,6 @@ impl KakouneUIUpdater {
                     match cmd {
                         DisplayCommand::ColorResult(richpp, append) => self.refresh_result_buffer_with(richpp, append).await?,
                         DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
-                        DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
                         DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
                         DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
                         _ => todo!(),
@@ -51,22 +50,6 @@ impl KakouneUIUpdater {
     }
 
     // ---------------------
-
-    async fn refresh_processed_range(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-
-    async fn remove_to_be_processed(&mut self, range: Range) -> io::Result<()> {
-        kak(
-            &session_id(self.session.clone()),
-            format!(
-                r#"evaluate-commands -buffer '{}' %{{ coqide-remove-to-be-processed '{}' }}"#,
-                edited_file(self.session.clone()),
-                range
-            ),
-        )
-        .await
-    }
 
     async fn remove_processed(&mut self, range: Range) -> io::Result<()> {
         kak(

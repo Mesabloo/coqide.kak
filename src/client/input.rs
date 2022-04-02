@@ -12,10 +12,9 @@ use crate::session::{edited_file, input_fifo, session_id, Session};
 use crate::state::{Operation, State};
 
 use super::commands::decode::{command_decoder, CommandDecoder};
-use super::commands::types::{ClientCommand, DisplayCommand};
+use super::commands::types::ClientCommand;
 
 pub struct ClientInput {
-    cmd_disp_tx: mpsc::UnboundedSender<DisplayCommand>,
     coqtop_call_tx: mpsc::UnboundedSender<ProtocolCall>,
     stop_tx: watch::Sender<()>,
     reader: FramedRead<UnixStream, CommandDecoder>,
@@ -27,7 +26,6 @@ pub struct ClientInput {
 impl ClientInput {
     pub async fn new(
         session: Arc<Session>,
-        cmd_disp_tx: mpsc::UnboundedSender<DisplayCommand>,
         coqtop_call_tx: mpsc::UnboundedSender<ProtocolCall>,
         stop_tx: watch::Sender<()>,
         state: Arc<Mutex<State>>,
@@ -54,7 +52,6 @@ impl ClientInput {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
 
         Ok(Self {
-            cmd_disp_tx,
             coqtop_call_tx,
             stop_tx,
             reader: command_decoder(pipe),
@@ -125,7 +122,7 @@ impl ClientInput {
         Ok(())
     }
 
-    async fn process_next(&mut self, range: Range, code: String) -> io::Result<()> {
+    async fn process_next(&mut self, _range: Range, code: String) -> io::Result<()> {
         let call = match self.state.lock().unwrap().operations.front() {
             None => panic!(),
             Some(Operation { state_id, .. }) => ProtocolCall::Add(code, *state_id),

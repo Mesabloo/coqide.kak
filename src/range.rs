@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct Range {
     begin: (u64, u64),
     end: (u64, u64),

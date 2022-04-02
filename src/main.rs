@@ -1,6 +1,7 @@
 #![feature(box_patterns)]
 
 use std::{
+    io,
     path::Path,
     process::exit,
     sync::{Arc, Mutex},
@@ -16,6 +17,8 @@ use tokio::{
     fs::File,
     sync::{mpsc, watch},
 };
+
+use crate::{coqtop::response_processor, kakoune::ui_updater};
 
 mod client;
 mod coqtop;
@@ -83,17 +86,28 @@ async fn main() {
     );
     let mut ui_updater = KakouneUIUpdater::new(session.clone(), kakoune_display_rx);
 
+    let mut stop_rx1 = stop_rx.clone();
+    let mut stop_rx2 = stop_rx.clone();
+    let mut stop_rx3 = stop_rx.clone();
+    let mut stop_rx4 = stop_rx.clone();
+    let handle1 = tokio::spawn(async move {
+        coqtop_bridge.transmit_until(stop_rx1).await?;
+        Ok::<_, io::Error>(coqtop_bridge)
+    });
+    let handle2 = tokio::spawn(async move { client_bridge.handle_commands_until(stop_rx2).await });
+    let handle3 = tokio::spawn(async move { response_processor.process_until(stop_rx3).await });
+    let handle4 = tokio::spawn(async move { ui_updater.update_until(stop_rx4).await });
+
     loop {
         tokio::select! {
-            res = coqtop_bridge.transmit_until(stop_rx.clone()) => break res,
-            res = client_bridge.handle_commands_until(stop_rx.clone()) => break res,
-            res = response_processor.process_until(stop_rx.clone()) => break res,
-            res = ui_updater.update_until(stop_rx.clone()) => break res,
-            Ok(_) = stop_rx.changed() => break Ok(()),
+            Ok(_) = stop_rx.changed() => break,
             else => {}
         }
     }
-    .unwrap();
+    let coqtop_bridge = handle1.await.unwrap().unwrap();
+    handle2.await.unwrap().unwrap();
+    handle3.await.unwrap().unwrap();
+    handle4.await.unwrap().unwrap();
 
     log::debug!("Stopping CoqIDE daemon");
 

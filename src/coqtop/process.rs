@@ -56,8 +56,8 @@ impl CoqIdeTop {
         let main_w = async { main_w_listen.accept().await };
 
         let flags = [
-            "-async-proofs",
-            "on",
+            // "-async-proofs",
+            // "on",
             "-topfile",
             &edited_file(session.clone()),
         ];
@@ -71,9 +71,6 @@ impl CoqIdeTop {
         // hence all the `.0`s.
         let (main_r, main_w, coqidetop) = (main_r?.0, main_w?.0, coqidetop?);
 
-        // let main_w = coqidetop.stdin.take().unwrap();
-        // let main_r = coqidetop.stdout.take().unwrap();
-
         log::info!(
             "{} (process {}) is up and running!",
             COQTOP,
@@ -83,7 +80,6 @@ impl CoqIdeTop {
         let reader = xml_decoder(main_r);
 
         Ok(Self {
-            //main_r,
             main_w,
             process: coqidetop,
             reader,
@@ -117,6 +113,7 @@ impl CoqIdeTop {
     /// Stops the underlying [`COQTOP`] process dirtily.
     pub async fn quit(mut self) -> io::Result<()> {
         self.main_w.shutdown().await?;
+        self.reader.into_inner().shutdown().await?;
         self.process.kill().await?;
 
         Ok(())

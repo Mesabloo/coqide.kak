@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use combine::parser::choice::Optional;
 use tokio::fs::{File, OpenOptions};
 use tokio::sync::{mpsc, watch};
 
@@ -87,7 +88,11 @@ impl ResponseProcessor {
                         // TODO: refresh processed range
                         // TODO: remove error range
                     }
-                    _ if error_state.is_some() => {}
+                    _ if error_state.is_some() => {
+                        // TODO: empty incoming queue (need a reference to it)
+                        // TODO: report error range
+                        // TODO: continue processing
+                    }
                     (
                         Pair(box StateId(state_id), box Pair(box union, _)),
                         Some(ClientCommand::Next(range, code)),
@@ -109,8 +114,22 @@ impl ResponseProcessor {
                             .await?;
 
                         log::debug!("Added code to processed operations");
-
-                        // TODO: refresh processed range at some point, maybe on the feedback message
+                    }
+                    (Optional(None), Some(ClientCommand::ShowGoals)) => {
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.continue_processing();
+                        }
+                        self.send_command(DisplayCommand::OutputGoals(vec![], vec![], vec![]))
+                            .await?;
+                    }
+                    (Optional(Some(box Goals(fg, bg, _, gg))), Some(ClientCommand::ShowGoals)) => {
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.continue_processing();
+                        }
+                        self.send_command(DisplayCommand::OutputGoals(fg, bg, gg))
+                            .await?;
                     }
                     _ => todo!(),
                 }

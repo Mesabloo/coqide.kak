@@ -67,34 +67,25 @@ impl ClientInput {
     pub async fn handle_commands_until(&mut self, mut stop: watch::Receiver<()>) -> io::Result<()> {
         loop {
             tokio::select! {
-                            Ok(_) = stop.changed() => break Ok(()),
-                            Some(cmd) = self.command_rx.recv(), if self.state.lock().unwrap().can_go_further() => {
-                                self.state.lock().unwrap().stop_processing();
-                                self.process_command(cmd).await?;
-                            }
-                            cmd = ClientCommand::decode_stream(&mut self.reader) => {
-                                match cmd? {
-                                    None => {
-                                        log::warn!("Junk byte ignored in stream");
-                                    },
-                                    Some(cmd) => {
-            /*                            match &cmd {
-                                            ClientCommand::Next(range, _) => {
-                                                self.cmd_disp_tx
-                                                    .send(DisplayCommand::PushToBeProcessedRange(range.clone()))
-                                                    .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
-                                            }
-                                            _ => {}
-                                        }
-            */
-                                        self.command_tx
-                                            .send(cmd)
-                                            .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
-                                    }
-                                }
-                            }
-                            else => {}
+                Ok(_) = stop.changed() => break Ok(()),
+                Some(cmd) = self.command_rx.recv(), if self.state.lock().unwrap().can_go_further() => {
+                    self.state.lock().unwrap().stop_processing();
+                    self.process_command(cmd).await?;
+                }
+                cmd = ClientCommand::decode_stream(&mut self.reader) => {
+                    match cmd? {
+                        None => {
+                            log::warn!("Junk byte ignored in stream");
+                        },
+                        Some(cmd) => {
+                            self.command_tx
+                                .send(cmd)
+                                .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
                         }
+                    }
+                }
+                else => {}
+            }
         }
     }
 
@@ -117,6 +108,7 @@ impl ClientInput {
             ClientCommand::Next(range, code) => self.process_next(range, code).await,
             ClientCommand::IgnoreError => todo!(),
             ClientCommand::Hints => todo!(),
+            ClientCommand::ShowGoals => self.process_show_goals().await,
         }
     }
 
@@ -154,6 +146,10 @@ impl ClientInput {
         }
 
         Ok(())
+    }
+
+    async fn process_show_goals(&mut self) -> io::Result<()> {
+        self.send_call(ProtocolCall::Goal).await
     }
 
     // --------------------------------------

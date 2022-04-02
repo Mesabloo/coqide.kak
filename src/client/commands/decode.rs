@@ -88,6 +88,7 @@ fn parse_command<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
         parse_next,
         parse_rewind_to,
         parse_move_to,
+        parse_show_goals,
         //map(take(1usize), |_| None),
     ))(input)
 }
@@ -167,6 +168,13 @@ fn parse_move_to<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
             )),
             |(ranges, _, _)| Some(ClientCommand::MoveTo(ranges)),
         )),
+    )(input)
+}
+
+fn parse_show_goals<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
+    preceded(
+        pair(tag("show-goals"), space0),
+        cut(value(Some(ClientCommand::ShowGoals), tag("\n"))),
     )(input)
 }
 

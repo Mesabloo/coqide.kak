@@ -25,6 +25,8 @@ pub enum ClientCommand {
     IgnoreError,
     /// Ask for hints for the current proof.
     Hints,
+    /// Ask the [`COQTOP`] process to output the current goals.
+    ShowGoals,
 }
 
 /// The type of commands that can be sent back to Kakoune.

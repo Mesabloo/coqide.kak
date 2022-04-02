@@ -265,6 +265,7 @@ define-command -docstring '
 
             echo "coqide-push-to-be-processed '$range'"
             echo "coqide-send-command %§next $range $code§"
+            echo "coqide-send-command %§show-goals§"
             echo "coqide-goto-tip"
           done
           ;;
@@ -309,9 +310,17 @@ define-command -docstring '
   1. `<path>`: the path to the content of the goal buffer
   2. `<ranges>`: color ranges for the highlighter
 ' -hidden -params 2 coqide-refresh-goal-buffer %{
+  echo -debug "coqide: refreshing goal buffer"
   evaluate-commands -buffer "%opt{coqide_goal_buffer}" %{
+    echo -debug "coqide: refreshing result buffer with new message"
     execute-keys "%%|cat<space>%arg{1}<ret>"
-    set-option buffer coqide_goal_highlight %val{timestamp} %arg{2}
+    evaluate-commands %sh{
+      if [ -z "$2" ]; then
+        echo "set-option buffer coqide_goal_highlight %val{timestamp}"
+      else
+        echo "set-option buffer coqide_goal_highlight %val{timestamp} %arg{2}"
+      fi
+    }
   }
 }
 define-command -docstring '
@@ -321,9 +330,16 @@ define-command -docstring '
   1. `<path>`: the path to the content of the goal buffer
   2. `<ranges>`: color ranges for the highlighter
 ' -hidden -params 2 coqide-refresh-result-buffer %{
+  echo -debug "coqide: refreshing result buffer"
   evaluate-commands -buffer "%opt{coqide_result_buffer}" %{
     execute-keys "%%|cat<space>%arg{1}<ret>"
-    set-option buffer coqide_result_highlight %val{timestamp} %arg{2}
+    evaluate-commands %sh{
+      if [ -z "$2" ]; then
+        echo "set-option buffer coqide_result_highlight %val{timestamp}"
+      else
+        echo "set-option buffer coqide_result_highlight %val{timestamp} %arg{2}"
+      fi
+    }
   }
 }
 
@@ -393,6 +409,7 @@ define-command -docstring '
 
   coqide-send-command 'quit'
 
+  remove-highlighter buffer/coqide_to_be_processed
   remove-highlighter buffer/coqide_processed
   remove-highlighter buffer/coqide_error
   remove-highlighter buffer/coqide_admitted

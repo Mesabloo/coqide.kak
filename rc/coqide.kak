@@ -304,6 +304,26 @@ define-command -docstring '
 }
 
 define-command -docstring '
+  Try to unprove the last processed statement, backtracking the processed state by one.
+' -params 0 coqide-previous %{
+  evaluate-commands %sh{
+    IFS=' ' read -r _ r1 <<< "$kak_opt_coqide_processed_range"
+    IFS=' ' read -r _ r2 <<< "$kak_opt_coqide_to_be_processed_range"
+    if [ -z "$r1" -a -z "$r2" ]; then
+      # if both ranges are empty, then there's nothing to backtrack, so we
+      # don't do anything here.
+      echo ""
+    else
+      echo "coqide-pop-top-to-be-processed"
+      echo "coqide-send-command %§previous§"
+      echo "coqide-send-command %§show-goals§"
+    fi
+  }
+}
+
+##############################################################################
+
+define-command -docstring '
   Refresh the content of the goal buffer.
 
   Arguments:
@@ -344,13 +364,33 @@ define-command -docstring '
   }
 }
 
+###############################################################################
+
 define-command -docstring '
   Pop the first range present in the range for to be processed code.
 ' -hidden -params 0 coqide-pop-to-be-processed %{
   echo -debug "coqide: removing first range from to be processed range"
   evaluate-commands %sh{
-    IFS=' |' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
+  IFS=' |' read -r _ range _ <<< "$kak_opt_coqide_to_be_processed_range"
     echo "coqide-remove-to-be-processed $range"
+  }
+}
+
+define-command -docstring '
+  Pop the last range added to the to be processed code, if there is one.
+' -hidden -params 0 coqide-pop-top-to-be-processed %{
+  echo -debug "coqide: remove the last range from to be processed range"
+  evaluate-commands %sh{
+    read -r _ r1 <<< "$kak_opt_coqide_to_be_processed_range"
+    if [ -z "$r1" ; then
+      # If $r1 is empty, then the range is empty so we don't need to do anything.
+      echo ""
+    else
+      range=`(tr ' ' '\n' | sed -e '$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+      #                             ^^^ remove all but the last line
+      IFS=' |' read -r range _ <<< "$range"
+      echo "coqide-remove-to-be-processed $range"
+    fi
   }
 }
 
@@ -369,7 +409,14 @@ define-command -docstring '
 }
 
 define-command -docstring '
-  Hello
+  Remove a given range from the "processed" range.
+' -hidden -params 1 coqide-remove-processed %{
+  echo -debug "coqide: remove %arg{1} from processed range"
+  set-option -remove buffer coqide_processed_range "%arg{1}|coqide_processed_face"
+}
+
+define-command -docstring '
+  Add a new range to the range of processed code.
 ' -hidden -params 1 coqide-add-to-processed %{
   echo -debug "coqide: add %arg{1} to the processed range"
   set-option -add buffer coqide_processed_range "%arg{1}|coqide_processed_face"
@@ -381,16 +428,18 @@ define-command -docstring '
   set-register a %sh{
     read -r _ r1 <<< "$kak_opt_coqide_to_be_processed_range"
     if [ -z "$r1" ]; then
+      # If $r1 is empty, then the range is empty so we don't need to do anything.
       echo ""
     else
   out=`(tr ' ' '\n' | sed -e '2p;$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+      #                           ^^^^^^ print the 2nd line, and remove all but the last line
       IFS=' .,|' read -r begin_line begin_column _ _ _ _ _ end_line end_column _ <<< "$out"
       echo "${begin_line}.${begin_column},${end_line}.${end_column}"
     fi
   }
 }
 
-
+##################################################################
 
 define-command -docstring '
   Quit CoqIDE.

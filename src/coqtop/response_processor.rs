@@ -76,11 +76,19 @@ impl ResponseProcessor {
                     }
                     (_, Some(ClientCommand::Quit)) => {}
                     (_, Some(ClientCommand::Previous)) => {
-                        {
+                        let old_op = {
                             let mut state = self.state.lock().unwrap();
-                            state.operations.pop_front();
+                            let old_op = state.operations.pop_front();
                             state.last_error = None;
                             state.continue_processing();
+                            old_op
+                        };
+                        match old_op {
+                            Some(Operation { range, .. }) => {
+                                self.send_command(DisplayCommand::RemoveProcessed(range))
+                                    .await?;
+                            }
+                            _ => {}
                         }
 
                         log::info!("Popped last state from processed ones");

@@ -42,6 +42,7 @@ impl KakouneUIUpdater {
                         DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
                         DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
                         DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
+                        DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
                         _ => todo!(),
                     }
                 }
@@ -60,6 +61,18 @@ impl KakouneUIUpdater {
             &session_id(self.session.clone()),
             format!(
                 r#"evaluate-commands -buffer '{}' %{{ coqide-remove-to-be-processed '{}' }}"#,
+                edited_file(self.session.clone()),
+                range
+            ),
+        )
+        .await
+    }
+
+    async fn remove_processed(&mut self, range: Range) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-remove-processed '{}' }}"#,
                 edited_file(self.session.clone()),
                 range
             ),

@@ -66,17 +66,20 @@ impl ClientInput {
 
     pub async fn handle_commands_until(&mut self, mut stop: watch::Receiver<()>) -> io::Result<()> {
         loop {
-            let (go_further, error_state) = {
-                let state = self.state.lock().unwrap();
-                (state.can_go_further(), state.error_state)
-            };
-
             tokio::select! {
                 Ok(_) = stop.changed() => break Ok(()),
                 Ok(cmd) = self.command_rx.recv() => {
-                    if go_further && error_state != ErrorState::ClearQueue {
-                        self.state.lock().unwrap().stop_processing();
-                        self.process_command(cmd, error_state).await?;
+                    let (go_further, error_state) = {
+                        let state = self.state.lock().unwrap();
+                        (state.can_go_further(), state.error_state)
+                    };
+
+                    match cmd {
+                        ClientCommand::Quit => self.process_command(ClientCommand::Quit, error_state).await?,
+                        cmd =>  if go_further && error_state != ErrorState::ClearQueue {
+                            self.state.lock().unwrap().stop_processing();
+                            self.process_command(cmd, error_state).await?;
+                        }
                     }
                 }
                 cmd = ClientCommand::decode_stream(&mut self.reader) => {
@@ -91,14 +94,7 @@ impl ClientInput {
                         }
                     }
                 }
-                else => {
-                    let mut state = self.state.lock().unwrap();
-                    if state.error_state == ErrorState::ClearQueue {
-                        // NOTE: just in case the queue has been cleaned (no more messages received from
-                        // the queue), toggle back to the error state.
-                        state.error_state = ErrorState::Error;
-                    }
-                }
+                else => {}
             }
         }
     }
@@ -128,7 +124,7 @@ impl ClientInput {
             }
             ClientCommand::IgnoreError => todo!(),
             ClientCommand::Hints => todo!(),
-            ClientCommand::ShowGoals => self.process_show_goals().await,
+            ClientCommand::ShowGoals(_) => self.process_show_goals().await,
             ClientCommand::Next(range, _) => {
                 self.state.lock().unwrap().continue_processing();
 
@@ -170,7 +166,12 @@ impl ClientInput {
         };
         match call {
             Some(call) => self.send_call(call).await?,
-            None => {}
+            None => {
+                log::error!(
+                    "No earlier operations to rewind to (queue length: {})",
+                    self.state.lock().unwrap().operations.len()
+                );
+            }
         }
 
         Ok(())
@@ -183,6 +184,8 @@ impl ClientInput {
     // --------------------------------------
 
     async fn send_call(&mut self, call: ProtocolCall) -> io::Result<()> {
+        log::debug!("Sending Coq call {:?}", call);
+
         self.coqtop_call_tx
             .send(call)
             .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))

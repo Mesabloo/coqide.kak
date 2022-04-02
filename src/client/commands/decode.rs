@@ -174,7 +174,10 @@ fn parse_move_to<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
 fn parse_show_goals<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
     preceded(
         pair(tag("show-goals"), space0),
-        cut(value(Some(ClientCommand::ShowGoals), tag("\n"))),
+        cut(map(
+            tuple((parse_range, space0, tag("\n"))),
+            |(range, _, _)| Some(ClientCommand::ShowGoals(range)),
+        )),
     )(input)
 }
 

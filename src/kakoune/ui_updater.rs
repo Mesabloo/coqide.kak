@@ -248,18 +248,27 @@ fn extract_colors(richpp: ProtocolRichPP, starting_line: usize) -> (String, Vec<
             | ProtocolRichPPPart::Path(txt)
             | ProtocolRichPPPart::Error(txt)
             | ProtocolRichPPPart::Warning(txt) => {
-                let begin = current_column;
-                let end = begin + txt.len();
+                let begin_column = current_column;
+                let begin_line = current_line;
+
+                for c in txt.chars() {
+                    if c == '\n' {
+                        current_line += 1;
+                        current_column = 1;
+                    } else {
+                        current_column += 1;
+                    }
+                }
+
                 message += txt.as_str();
 
-                current_column = end;
                 Some(format!(
                     "{}|coqide_{}",
                     Range::new(
+                        begin_line as u64,
+                        begin_column as u64,
                         current_line as u64,
-                        begin as u64,
-                        current_line as u64,
-                        end as u64
+                        current_column as u64
                     ),
                     color_name,
                 ))

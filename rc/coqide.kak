@@ -267,7 +267,7 @@ define-command -docstring '
 
             echo "coqide-push-to-be-processed '$range'"
             echo "coqide-send-command %§next $range $code§"
-            echo "coqide-send-command %§show-goals§"
+            echo "coqide-send-command %§show-goals $range§"
             echo "coqide-goto-tip"
           done
           ;;
@@ -284,7 +284,9 @@ define-command -docstring '
   echo -debug "coqide: moving cursor to tip"
   
   execute-keys %sh{
-    IFS=' .,|' read -r _ _ _ eline ecol _ <<< "$kak_opt_coqide_to_be_processed_range"
+    range=`(tr ' ' '\n' | sed -e '$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+    #                             ^^^ remove all but the last line
+    IFS=' |.,' read -r _ _ eline ecol _ <<< "$range"
     eline=${eline:-1}
     ecol=${ecol:-1}
 
@@ -318,7 +320,7 @@ define-command -docstring '
     else
       echo "coqide-pop-top-to-be-processed"
       echo "coqide-send-command %§previous§"
-      echo "coqide-send-command %§show-goals§"
+      echo "coqide-send-command %§show-goals 1.1,1.1§"
     fi
   }
 }

@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use itertools::{enumerate, partition};
 use tokio::sync::{
     broadcast::{self, error::TryRecvError},
     mpsc, watch,
@@ -103,7 +104,7 @@ impl ResponseProcessor {
 
                         log::info!("Popped last state from processed ones");
                     }
-                    (Optional(None), Some(ClientCommand::ShowGoals)) => {
+                    (Optional(None), Some(ClientCommand::ShowGoals(_))) => {
                         {
                             let mut state = self.state.lock().unwrap();
                             state.continue_processing();
@@ -111,7 +112,10 @@ impl ResponseProcessor {
                         self.send_command(DisplayCommand::OutputGoals(vec![], vec![], vec![]))
                             .await?;
                     }
-                    (Optional(Some(box Goals(fg, bg, _, gg))), Some(ClientCommand::ShowGoals)) => {
+                    (
+                        Optional(Some(box Goals(fg, bg, _, gg))),
+                        Some(ClientCommand::ShowGoals(_)),
+                    ) => {
                         {
                             let mut state = self.state.lock().unwrap();
                             state.continue_processing();
@@ -120,7 +124,10 @@ impl ResponseProcessor {
                             .await?;
                     }
 
-                    _ if error_state != ErrorState::Ok => {}
+                    _ if error_state != ErrorState::Ok => {
+                        let mut state = self.state.lock().unwrap();
+                        state.continue_processing();
+                    }
                     (
                         Pair(box StateId(state_id), box Pair(box union, _)),
                         Some(ClientCommand::Next(range, _)),
@@ -160,14 +167,17 @@ impl ResponseProcessor {
                 };
 
                 match last_command {
-                    _ if error_state != ErrorState::Ok => {}
+                    _ if error_state != ErrorState::Ok => {
+                        let mut state = self.state.lock().unwrap();
+                        state.continue_processing();
+                    }
                     Some(ClientCommand::Init) => {
                         // TODO: failed to init
                     }
                     Some(ClientCommand::Query(_)) => {
                         // TODO: show error
                     }
-                    Some(ClientCommand::Next(range, _)) => {
+                    Some(ClientCommand::Next(range, _) | ClientCommand::ShowGoals(range)) => {
                         {
                             let mut state = self.state.lock().unwrap();
                             state.error_state = ErrorState::ClearQueue;
@@ -192,6 +202,8 @@ impl ResponseProcessor {
                         })
                         .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
 
+                        self.discard_states_until(safe_state_id).await?;
+
                         self.send_command(DisplayCommand::ColorResult(message.error(), false))
                             .await?;
                         self.send_command(DisplayCommand::RemoveToBeProcessed(range))
@@ -199,9 +211,8 @@ impl ResponseProcessor {
                         self.send_command(DisplayCommand::RefreshErrorRange(Some(range)))
                             .await?;
                     }
-                    _ => {
-                        // ??? don't know what caused the error
-                        todo!()
+                    c => {
+                        log::error!("Command {:?} caused a failure", c);
                     }
                 }
             }
@@ -230,6 +241,30 @@ impl ResponseProcessor {
                                 .await?;
                             }
                             MessageType::Error => {
+                                /*                                {
+                                                                    let mut state = self.state.lock().unwrap();
+                                                                    state.error_state = ErrorState::ClearQueue;
+                                                                }
+
+                                                                tokio::task::block_in_place(|| loop {
+                                                                    match self.command_rx.try_recv() {
+                                                                        Ok(_) => {}
+                                                                        Err(TryRecvError::Empty) => {
+                                                                            log::debug!(
+                                                                                "Command channel is now empty. Moving towards error state."
+                                                                            );
+
+                                                                            let mut state = self.state.lock().unwrap();
+                                                                            state.error_state = ErrorState::Error;
+                                                                            break Ok(());
+                                                                        }
+                                                                        Err(e) => break Err(e),
+                                                                    }
+                                                                })
+                                                                .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+
+                                                                self.discard_states_until(state_id).await?;
+                                */
                                 self.send_command(DisplayCommand::ColorResult(
                                     message.error(),
                                     true,
@@ -248,6 +283,35 @@ impl ResponseProcessor {
     }
 
     // ---------------------------------
+
+    async fn discard_states_until(&mut self, state_id: i64) -> io::Result<()> {
+        let mut operations = {
+            let mut state = self.state.lock().unwrap();
+            let operations = state.operations.clone();
+
+            state.operations.retain(|op| op.state_id <= state_id);
+
+            operations
+        };
+
+        log::debug!("Rewinding to state ID {}", state_id);
+
+        let split_index = partition(&mut operations, |op: &Operation| op.state_id > state_id);
+        for (i, op) in enumerate(operations) {
+            if i >= split_index {
+                break;
+            }
+
+            log::debug!("Removing operation on state ID {}", op.state_id);
+
+            self.send_command(DisplayCommand::RemoveProcessed(op.range))
+                .await?;
+            self.send_command(DisplayCommand::RemoveToBeProcessed(op.range))
+                .await?;
+        }
+
+        Ok(())
+    }
 
     fn find_range(&self, state_id: i64) -> Option<Range> {
         let state = self.state.lock().unwrap();

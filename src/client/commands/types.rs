@@ -26,7 +26,7 @@ pub enum ClientCommand {
     /// Ask for hints for the current proof.
     Hints,
     /// Ask the [`COQTOP`] process to output the current goals.
-    ShowGoals,
+    ShowGoals(Range),
 }
 
 /// The type of commands that can be sent back to Kakoune.

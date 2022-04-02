@@ -119,6 +119,8 @@ set-face global coqide_notation @operator
 set-face global coqide_variable @variable
 set-face global coqide_reference @variable
 set-face global coqide_path @module
+set-face global coqide_warning yellow+b
+set-face global coqide_error +b@coqide_error_face
 
 
 

@@ -37,11 +37,14 @@ impl KakouneUIUpdater {
             tokio::select! {
                 Ok(_) = stop.changed() => break Ok(()),
                 Some(cmd) = self.kakoune_display_rx.recv() => {
+                    log::debug!("Received UI command {:?}", cmd);
+
                     match cmd {
                         DisplayCommand::ColorResult(richpp, append) => self.refresh_result_buffer_with(richpp, append).await?,
                         DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
                         DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
                         DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
+                        DisplayCommand::RefreshErrorRange(range) => self.refresh_error_range(range).await?,
                         _ => todo!(),
                     }
                 }
@@ -73,6 +76,10 @@ impl KakouneUIUpdater {
             ),
         )
         .await
+    }
+
+    async fn refresh_error_range(&mut self, range: Option<Range>) -> io::Result<()> {
+        Ok(())
     }
 
     async fn refresh_result_buffer_with(
@@ -211,7 +218,9 @@ fn extract_colors(richpp: ProtocolRichPP, starting_line: usize) -> (String, Vec<
             | ProtocolRichPPPart::Notation(txt)
             | ProtocolRichPPPart::Variable(txt)
             | ProtocolRichPPPart::Reference(txt)
-            | ProtocolRichPPPart::Path(txt) => {
+            | ProtocolRichPPPart::Path(txt)
+            | ProtocolRichPPPart::Error(txt)
+            | ProtocolRichPPPart::Warning(txt) => {
                 let begin = current_column;
                 let end = begin + txt.len();
                 message += txt.as_str();
@@ -248,6 +257,8 @@ fn color_name(part: &ProtocolRichPPPart) -> String {
         ProtocolRichPPPart::Variable(_) => "variable",
         ProtocolRichPPPart::Reference(_) => "reference",
         ProtocolRichPPPart::Path(_) => "path",
+        ProtocolRichPPPart::Warning(_) => "warning",
+        ProtocolRichPPPart::Error(_) => "error",
         _ => "unknown",
     }
     .to_string()

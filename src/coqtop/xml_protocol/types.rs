@@ -171,6 +171,11 @@ pub enum ProtocolRichPPPart {
     Reference(String),
     /// ???
     Path(String),
+
+    /// For internal use only: some text colored as an error (most likely red).
+    Error(String),
+    /// For internal use only: some text colored as a warning (most likely yellow).
+    Warning(String),
 }
 
 /// Commands that `coqidetop` can understand.

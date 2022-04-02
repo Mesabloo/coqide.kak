@@ -146,7 +146,8 @@ impl ResponseProcessor {
                         self.send_command(DisplayCommand::ColorResult(message, true))
                             .await?;
                     }
-                    _ => log::error!("[{}] {}", state_id, message.strip()),
+                    MessageType::Debug => log::debug!("@{}: {}", state_id, message.strip()),
+                    _ => log::error!("@{}: {}", state_id, message.strip()),
                 },
                 FeedbackContent::Processed => {}
                 _ => log::debug!("Received feedback object [{}] {:?}", state_id, content),

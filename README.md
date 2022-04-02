@@ -44,9 +44,12 @@ plug "mesabloo/coqide.kak" do %{
 - `coqide-previous` removes the last processed Coq statement from the processed state.
 - `coqide-query` prompts for a query to send directly to the `coqidetop` process and sends it without affecting the current state.
 - `coqide-move-to` tries to process Coq statements until the main cursor.
+- `coqide-hints` asks the daemon for hints for the current proof.
+  These may not necessarily be meaningful or useful at all, but this command is provided just in case.
+- `coqide-goto-tip` moves the cursor 
 
 Additional functionality:
-- This plugin will aso automatically backtrack to the cursor when an insertion is detected before the end of the processed range.
+- This plugin will also automatically backtrack to the cursor when an insertion is detected before the end of the processed range.
 
 ## Documentation
 
@@ -56,24 +59,30 @@ This plugin comes with several default options, but some of them can be altered:
   Sometimes, the executable is not in your PATH, so you may want to customize this option using `set-option global coqide_command "<path to coqide-daemon>"`.
   The default value is `coqide-daemon` therefore assumes it is in your PATH.
 - **Colors:**
-  - `coqide_processed` is the `face` used to highlight Coq code which has already been processed by the daemon.
-    This can be customized as wanted using `set-face`, but comes with the default value `default,black`.
-  - `coqide_errors` is the `face` used to highlight errors in the Coq buffer.
-    It defaults to `default,red` and can be customized with `set-face`.
-  - `coqide_keyword` is the `face` used to color keywords in both goal and result buffers.
-    It defauls to the same face used to color `keyword`s.
-  - `coqide_evar` is used to highlight specific variables in the goal and result buffers.
-    Defaults to `variable` when not specified.
-  - `coqide_type` is the face which colors types in the goal and results buffers.
-    Defaults to the face `type` if unchanged.
-  - `coqide_notation` colors operators in both goal and result buffers.
-    Defaults to `operator` if left unspecified.
-  - `coqide_variable` is used to highlight variable names in the goal and result buffers.
-    Defaults to `variable` if unchanged.
-  - `coqide_reference` ???
-    Defaults to `variable` because I'm quite unsure what this is used for.
-  - `coqide_path` ???
-    Defaults to `module` for some reason.
+  - Ranges:
+    - `coqide_processed_face` is the `face` used to highlight Coq code which has already been processed by the daemon.
+      This can be customized as wanted using `set-face`, but comes with the default value `default,green`.
+    - `coqide_error_face` is the `face` used to highlight errors in the Coq buffer.
+      It defaults to `default,red` and can be customized with `set-face`.
+    - `coqide_to_be_processed_face` is the `face` used to color code which is yet to be processed by the daemon.
+      Defaults to `default,magenta` to be as close as possible to default CoqIDE colors.
+    - `coqide_admitted_face` is the `face` used to highlight parts of the code which contain admitted proofs, as in CoqIDE.
+      This defaults to `default,yellow` so as to be visual and mimic CoqIDE.
+  - Code coloring:
+    - `coqide_keyword` is the `face` used to color keywords in both goal and result buffers.
+      It defauls to the same face used to color `keyword`s.
+    - `coqide_evar` is used to highlight specific variables in the goal and result buffers.
+      Defaults to `variable` when not specified.
+    - `coqide_type` is the face which colors types in the goal and results buffers.
+      Defaults to the face `type` if unchanged.
+    - `coqide_notation` colors operators in both goal and result buffers.
+      Defaults to `operator` if left unspecified.
+    - `coqide_variable` is used to highlight variable names in the goal and result buffers.
+      Defaults to `variable` if unchanged.
+    - `coqide_reference` ???
+      Defaults to `variable` because I'm quite unsure what this is used for.
+    - `coqide_path` ???
+      Defaults to `module` for some reason.
 
 ## Things left to do and known bugs
 
@@ -81,54 +90,41 @@ The codebase is at some locations pretty ugly (e.g. when decoding XML nodes to R
 However, most of it should be at last a little bit documented.
 
 Here are some erroneous or incomplete features:
-- Add ranges instead of modifying a global range.
-- Put different colors (e.g. orange) for ranges with given up goals (e.g. after applying the `admit` tactic).
-- Sending two `next` commands simultaneously (the second needs to be sent before the first one is processed) creates inconsistent state IDs.
-  A workaround is simply to go back 2-3 states and retry processing.
-
-  This might be easily fixable by locking everything after sending a call until a `Processed` response is received.
-- Editing at the beginning of the buffer (before any processing) breaks the whole extension.
-- Backtracking on error goes one step too far, needs to backtrack one by hand before.
-- Backtracking after code editing before the tip goes one step too far, needing to go one step by hand after.
-- Allow asking for hints in proofs.
-- Syntax errors are not always indicated in the error range.
-- “Parse” a local `.CoqProject` file for some flags to give to `coqidetop`.
-- Handle `filedependency` feedback contents.
-- ... and some other things that I did not see.
+- List to be completed when the whole extension actually works again.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.
-Just try not to implement many features in the same pull request.
+Just try not to implementi too many features in the same pull request (two is acceptable, if small).
 
 ## Personal configuration
 
 As I intend to use this plugin, here is how I configured it.
-It spawns two new kakoune clients containing the result and goal buffers and deletes them when they get discarded.
+It spawns two new kakoune clients containing the result and goal buffers and deletes them when the master buffer gets discarded.
 
-```sh
+```kak
 plug "coqide.kak" do %{
   cargo build --release --locked
   cargo install --force --path . --root ~/.local
 } config %{
   declare-option -hidden str coqide_close_panels
 
-  declare-user-mode coq
-  map global coq c ": enter-user-mode -lock coq<ret>" \
-    -docstring "stay in the Coq user mode"
-  map global coq k ": coqide-previous<ret>" \
-    -docstring "unprove the last statement"
-  map global coq j ": coqide-next<ret>" \
-    -docstring "prove the next statement"
-  map global coq <ret> ": coqide-move-to<ret>" \
-    -docstring "move tip to main cursor"
-  map global coq l ": coqide-dump-log<ret>" \
-    -docstring "dump logs"
-  map global coq q ": coqide-query<ret>" \
-    -docstring "send a query to coqtop"
+    declare-user-mode coq
+    map global coq c ": enter-user-mode -lock coq<ret>" \
+      -docstring "stay in the Coq user mode"
+    map global coq k ": coqide-previous<ret>" \
+      -docstring "unprove the last statement"
+    map global coq j ": coqide-next<ret>" \
+      -docstring "prove the next statement"
+    map global coq <ret> ": coqide-move-to<ret>" \
+      -docstring "move tip to main cursor"
+    map global coq l ": coqide-dump-log<ret>" \
+      -docstring "dump logs"
+    map global coq q ": coqide-query<ret>" \
+      -docstring "send a query to coqtop"
 
   # Create two additional clients to show goals and results
-  hook global BufCreate \*coqide-(.*)-(goal|result)\* %{
+  hook global BufCreate (goal|result)-(.*) %{
     evaluate-commands %sh{
-      client_name="coq-${kak_hook_param_capture_1}-${kak_hook_param_capture_2}"
+      client_name="${kak_hook_param_capture_1}-${kak_hook_param_capture_2}"
       regex_safe="$(sed 's/\*/\\*/g' <<< "$kak_hook_param_capture_0")"
 
       switch_to_buffer="
@@ -151,7 +147,8 @@ plug "coqide.kak" do %{
   }
 
 
-  hook global WinSetOption filetype=coq %{ 
+  hook global WinSetOption filetype=coq %{
+    require-module coqide
     coqide-start
 
     # User mode to interact with CoqIDE only in Coq files
@@ -165,8 +162,8 @@ plug "coqide.kak" do %{
     # These are declared here as a string in order to have the value of `%opt{coqide_pid}`
     # (which is an internal option)
     set-option buffer coqide_close_panels "
-      evaluate-commands -client coq-%opt{coqide_pid}-goal 'quit!'
-      evaluate-commands -client coq-%opt{coqide_pid}-result 'quit!'
+      evaluate-commands -client goal-%opt{coqide_pid} 'quit!'
+      evaluate-commands -client result-%opt{coqide_pid} 'quit!'
       remove-hooks coqide-%opt{coqide_pid}
     "
 

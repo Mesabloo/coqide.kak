@@ -382,7 +382,7 @@ define-command -docstring '
   echo -debug "coqide: remove the last range from to be processed range"
   evaluate-commands %sh{
     read -r _ r1 <<< "$kak_opt_coqide_to_be_processed_range"
-    if [ -z "$r1" ; then
+    if [ -z "$r1" ]; then
       # If $r1 is empty, then the range is empty so we don't need to do anything.
       echo ""
     else
@@ -431,7 +431,7 @@ define-command -docstring '
       # If $r1 is empty, then the range is empty so we don't need to do anything.
       echo ""
     else
-  out=`(tr ' ' '\n' | sed -e '2p;$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+      out=`(tr ' ' '\n' | sed -e '2p;$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
       #                           ^^^^^^ print the 2nd line, and remove all but the last line
       IFS=' .,|' read -r begin_line begin_column _ _ _ _ _ end_line end_column _ <<< "$out"
       echo "${begin_line}.${begin_column},${end_line}.${end_column}"

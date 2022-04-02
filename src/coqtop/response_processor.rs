@@ -97,6 +97,11 @@ impl ResponseProcessor {
                         Pair(box StateId(state_id), box Pair(box union, _)),
                         Some(ClientCommand::Next(range, code)),
                     ) => {
+                        self.send_command(DisplayCommand::ColorResult(
+                            ProtocolRichPP::RichPP(vec![]),
+                            false,
+                        ))
+                        .await?;
                         let new_state_id = match union {
                             Inl(box Unit) => state_id,
                             Inr(box StateId(state_id)) => state_id,
@@ -138,7 +143,7 @@ impl ResponseProcessor {
             Feedback(_, _, StateId(state_id), content) => match content {
                 FeedbackContent::Message(message_type, message) => match message_type {
                     MessageType::Notice | MessageType::Info => {
-                        self.send_command(DisplayCommand::ColorResult(message))
+                        self.send_command(DisplayCommand::ColorResult(message, true))
                             .await?;
                     }
                     _ => log::error!("[{}] {}", state_id, message.strip()),

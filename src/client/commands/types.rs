@@ -37,7 +37,7 @@ pub enum DisplayCommand {
     /// Refresh the error range.
     RefreshErrorRange(Option<Range>),
     /// Output the result with colors.
-    ColorResult(ProtocolRichPP),
+    ColorResult(ProtocolRichPP, bool),
     /// Show some goals.
     OutputGoals(
         /// Foreground (focused) goals.

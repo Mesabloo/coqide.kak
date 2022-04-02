@@ -38,7 +38,7 @@ impl KakouneUIUpdater {
                 Ok(_) = stop.changed() => break Ok(()),
                 Some(cmd) = self.kakoune_display_rx.recv() => {
                     match cmd {
-                        DisplayCommand::ColorResult(richpp) => self.refresh_result_buffer_with(richpp, false).await?,
+                        DisplayCommand::ColorResult(richpp, append) => self.refresh_result_buffer_with(richpp, append).await?,
                         DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
                         DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
                         DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
@@ -86,7 +86,7 @@ impl KakouneUIUpdater {
     ) -> io::Result<()> {
         let result_buffer = result_file(&temporary_folder(self.session.clone()));
 
-        let (content, colors) = extract_colors(richpp, 1);
+        let (mut content, colors) = extract_colors(richpp, 1);
 
         let mut file = if content.is_empty() || !append {
             File::create(&result_buffer).await?
@@ -99,20 +99,19 @@ impl KakouneUIUpdater {
         };
 
         if !content.is_empty() {
-            let coq_file = edited_file(self.session.clone());
-
+            content += "\n";
             file.write_all(content.as_bytes()).await?;
-            kak(
-                &session_id(self.session.clone()),
-                format!(
-                    r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" {2} }}"#,
-                    coq_file,
-                    result_buffer,
-                    colors.join(" ")
-                ),
-            )
-            .await?;
         }
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" {2} }}"#,
+                edited_file(self.session.clone()),
+                result_buffer,
+                colors.join(" ")
+            ),
+        )
+        .await?;
 
         Ok(())
     }

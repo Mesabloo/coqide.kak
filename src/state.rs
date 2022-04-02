@@ -11,6 +11,15 @@ pub struct Operation {
     pub range: Range,
 }
 
+impl Default for Operation {
+    fn default() -> Self {
+        Self {
+            state_id: 1,
+            range: Range::default(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ErrorState {
     Ok,

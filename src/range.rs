@@ -2,8 +2,8 @@ use std::fmt;
 
 #[derive(Clone, Debug, Copy)]
 pub struct Range {
-    begin: (u64, u64),
-    end: (u64, u64),
+    pub begin: (u64, u64),
+    pub end: (u64, u64),
 }
 
 impl Range {

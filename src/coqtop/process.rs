@@ -3,7 +3,7 @@ use std::{io, process::Stdio, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
     join,
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
     process::{Child, ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
 };

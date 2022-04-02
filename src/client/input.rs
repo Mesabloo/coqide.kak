@@ -116,7 +116,7 @@ impl ClientInput {
             ClientCommand::Init => self.process_init().await,
             ClientCommand::Quit => self.process_quit().await,
             ClientCommand::Previous => self.process_previous().await,
-            ClientCommand::RewindTo(_, _) => todo!(),
+            ClientCommand::RewindTo(line, col) => self.process_rewind_to(line, col).await,
             ClientCommand::Query(_) => todo!(),
             ClientCommand::MoveTo(_) if error_state == ErrorState::Ok => todo!(),
             ClientCommand::Next(range, code) if error_state == ErrorState::Ok => {
@@ -194,8 +194,6 @@ impl ClientInput {
             state.last_error_range = None;
             state.error_state = ErrorState::Ok;
             state.continue_processing();
-
-            log::debug!("I am supposed to be printed!");
         }
 
         self.cmd_disp_tx
@@ -205,6 +203,40 @@ impl ClientInput {
 
     async fn process_back_to(&mut self, op: Operation) -> io::Result<()> {
         self.send_call(ProtocolCall::EditAt(op.state_id)).await
+    }
+
+    async fn process_rewind_to(&mut self, line: u64, column: u64) -> io::Result<()> {
+        let (op, tip) = {
+            let state = self.state.lock().unwrap();
+            let op = state
+                .operations
+                .iter()
+                .find(|op| {
+                    let range = op.range;
+                    range.end.0 < line || (range.end.0 == line && range.end.1 < column)
+                })
+                .cloned();
+            (op, state.operations.front().cloned())
+        };
+        let (new_state_id, tip_id) = {
+            let mut state = self.state.lock().unwrap();
+
+            let op = op.unwrap_or_else(Operation::default);
+            let new_id = op.state_id;
+
+            state.waiting.pop_back();
+            state.waiting.push_back(ClientCommand::BackTo(op));
+
+            (new_id, tip.map(|op| op.state_id).unwrap_or(1))
+        };
+
+        if new_state_id < tip_id {
+            self.send_call(ProtocolCall::EditAt(new_state_id)).await
+        } else {
+            let mut state = self.state.lock().unwrap();
+            state.continue_processing();
+            Ok(())
+        }
     }
 
     // --------------------------------------

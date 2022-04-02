@@ -105,7 +105,7 @@ impl KakouneUIUpdater {
             kak(
                 &session_id(self.session.clone()),
                 format!(
-                    r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" "{2}" }}"#,
+                    r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" {2} }}"#,
                     coq_file,
                     result_buffer,
                     colors.join(" ")
@@ -175,7 +175,7 @@ impl KakouneUIUpdater {
         kak(
             &session_id(self.session.clone()),
             format!(
-                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-goal-buffer "{1}" "{2}" }}"#,
+                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-goal-buffer "{1}" {2} }}"#,
                 edited_file(self.session.clone()),
                 goal_buffer,
                 colors.join(" ")

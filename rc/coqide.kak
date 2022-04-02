@@ -309,16 +309,17 @@ define-command -docstring '
   Arguments:
   1. `<path>`: the path to the content of the goal buffer
   2. `<ranges>`: color ranges for the highlighter
-' -hidden -params 2 coqide-refresh-goal-buffer %{
+' -hidden -params 1.. coqide-refresh-goal-buffer %{
   echo -debug "coqide: refreshing goal buffer"
   evaluate-commands -buffer "%opt{coqide_goal_buffer}" %{
     echo -debug "coqide: refreshing result buffer with new message"
     execute-keys "%%|cat<space>%arg{1}<ret>"
     evaluate-commands %sh{
-      if [ -z "$2" ]; then
+      if [ "$#" -eq 1 ]; then
         echo "set-option buffer coqide_goal_highlight %val{timestamp}"
       else
-        echo "set-option buffer coqide_goal_highlight %val{timestamp} %arg{2}"
+        shift
+        echo "set-option buffer coqide_goal_highlight %val{timestamp}" "$@"
       fi
     }
   }
@@ -329,15 +330,15 @@ define-command -docstring '
   Arguments:
   1. `<path>`: the path to the content of the goal buffer
   2. `<ranges>`: color ranges for the highlighter
-' -hidden -params 2 coqide-refresh-result-buffer %{
+' -hidden -params 1.. coqide-refresh-result-buffer %{
   echo -debug "coqide: refreshing result buffer"
   evaluate-commands -buffer "%opt{coqide_result_buffer}" %{
     execute-keys "%%|cat<space>%arg{1}<ret>"
     evaluate-commands %sh{
-      if [ -z "$2" ]; then
+      if [ "$#" -eq 1 ]; then
         echo "set-option buffer coqide_result_highlight %val{timestamp}"
       else
-        echo "set-option buffer coqide_result_highlight %val{timestamp} %arg{2}"
+        echo "set-option buffer coqide_result_highlight %val{timestamp} " "$@"
       fi
     }
   }

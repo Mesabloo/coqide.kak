@@ -1,6 +1,6 @@
 use std::fmt;
 
-use self::types::{ProtocolRichPP, ProtocolRichPPPart};
+use self::types::{ProtocolResult, ProtocolRichPP, ProtocolRichPPPart};
 
 /// Decode results, values, etc from a XML string.
 pub mod decode;
@@ -102,5 +102,15 @@ impl fmt::Display for ProtocolRichPP {
             write!(f, "{}", p)?;
         }
         Ok(())
+    }
+}
+
+impl ProtocolResult {
+    pub fn is_feedback(&self) -> bool {
+        match self {
+            ProtocolResult::Good(_) => false,
+            ProtocolResult::Fail(_, _, _, _) => false,
+            ProtocolResult::Feedback(_, _, _, _) => true,
+        }
     }
 }

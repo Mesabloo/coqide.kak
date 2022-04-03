@@ -1,12 +1,8 @@
-use std::{
-    io,
-    sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, io, sync::Arc};
 
 use tokio::{
     fs::{File, OpenOptions},
     io::AsyncWriteExt,
-    sync::{mpsc, watch},
 };
 
 use crate::{
@@ -15,58 +11,44 @@ use crate::{
     files::{goal_file, result_file},
     range::Range,
     session::{edited_file, session_id, temporary_folder, Session},
-    state::State,
 };
 
 use super::command_line::kak;
 
 pub struct KakouneUIUpdater {
     session: Arc<Session>,
-    state: Arc<Mutex<State>>,
-    kakoune_display_rx: mpsc::UnboundedReceiver<DisplayCommand>,
 }
 
 impl KakouneUIUpdater {
-    pub fn new(
-        session: Arc<Session>,
-        state: Arc<Mutex<State>>,
-        kakoune_display_rx: mpsc::UnboundedReceiver<DisplayCommand>,
-    ) -> Self {
-        Self {
-            session,
-            state,
-            kakoune_display_rx,
-        }
+    pub fn new(session: Arc<Session>) -> Self {
+        Self { session }
     }
 
-    pub async fn update_until(&mut self, mut stop: watch::Receiver<()>) -> io::Result<()> {
-        loop {
-            tokio::select! {
-                Ok(_) = stop.changed() => break Ok(()),
-                Some(cmd) = self.kakoune_display_rx.recv() => {
-                    log::debug!("Received UI command {:?}", cmd);
+    pub async fn process(&mut self, mut commands: VecDeque<DisplayCommand>) -> io::Result<()> {
+        log::debug!("Processing {} UI commands", commands.len());
 
-                    match cmd {
-                        DisplayCommand::ColorResult(richpp, append) => self.refresh_result_buffer_with(richpp, append).await?,
-                        DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
-                        DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
-                        DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
-                        DisplayCommand::RefreshErrorRange(range) => self.refresh_error_range(range).await?,
-                        DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
-                        DisplayCommand::GotoTip => self.goto_tip().await?,
-                        DisplayCommand::ContinueProcessing => self.continue_processing().await?,
-                    }
+        while let Some(cmd) = commands.pop_front() {
+            log::debug!("Received UI command {:?}", cmd);
+
+            match cmd {
+                DisplayCommand::ColorResult(richpp, append) => {
+                    self.refresh_result_buffer_with(richpp, append).await?
                 }
+                DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
+                DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
+                DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
+                DisplayCommand::RefreshErrorRange(range) => self.refresh_error_range(range).await?,
+                DisplayCommand::RemoveToBeProcessed(range) => {
+                    self.remove_to_be_processed(range).await?
+                }
+                DisplayCommand::GotoTip => self.goto_tip().await?,
             }
         }
+
+        Ok(())
     }
 
     // ---------------------
-
-    async fn continue_processing(&mut self) -> io::Result<()> {
-        self.state.lock().unwrap().continue_processing();
-        Ok(())
-    }
 
     async fn goto_tip(&mut self) -> io::Result<()> {
         kak(

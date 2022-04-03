@@ -1,3 +1,3 @@
-pub mod process;
-pub mod response_processor;
+pub mod coqidetop;
+pub mod processor;
 pub mod xml_protocol;

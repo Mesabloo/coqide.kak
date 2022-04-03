@@ -463,6 +463,7 @@ define-command -docstring '
   Return to the state indicated by the two parameters (in order: buffer line and column).
 ' -hidden -params 2 coqide-invalidate-state %{
   coqide-send-command "rewind-to %arg{1} %arg{2}"
+  coqide-send-command "show-goals 1.1,1.1"
 }
 
 ##############################################################################

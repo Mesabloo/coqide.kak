@@ -101,7 +101,6 @@ Here are some erroneous or incomplete features:
   A workaround for now is to backtrack by hand until before your cursor.
 - Output `Ready in ..., proving ...` in an info box at all time, in normal mode.
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
-- `coqide-move-to`, trying to process code until the cursor position or the first error.
 - Color admitted ranges in yellow.
 - Handle all of feedback types supported by CoqIDE.
 - Bugs are yet to be found! If you find any, please report them.

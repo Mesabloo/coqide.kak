@@ -54,4 +54,8 @@ pub enum DisplayCommand {
     AddToProcessed(Range),
     /// Remove a range from the processed code.
     RemoveProcessed(Range),
+    /// Go to the tip of the processed code.
+    GotoTip,
+    /// Internal use:
+    ContinueProcessing,
 }

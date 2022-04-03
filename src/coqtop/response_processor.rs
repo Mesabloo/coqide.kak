@@ -76,13 +76,17 @@ impl ResponseProcessor {
 
                 match (value, last_command) {
                     (StateId(state_id), Some(ClientCommand::Init)) => {
-                        let mut state = self.state.lock().unwrap();
-                        state.operations.push_front(Operation {
-                            state_id,
-                            range: Range::default(),
-                        });
-                        state.continue_processing();
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.operations.push_front(Operation {
+                                state_id,
+                                range: Range::default(),
+                            });
+                            // state.continue_processing();
+                        }
 
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
                         log::info!("Init at state ID {}", state_id);
                     }
                     (_, Some(ClientCommand::Quit)) => {}
@@ -92,17 +96,21 @@ impl ResponseProcessor {
                             let old_op = state.operations.pop_front();
                             state.last_error_range = None;
                             state.error_state = ErrorState::Ok;
-                            state.continue_processing();
                             old_op
                         };
                         match old_op {
                             Some(Operation { range, .. }) => {
                                 self.send_command(DisplayCommand::RemoveProcessed(range))
                                     .await?;
+                                self.send_command(DisplayCommand::RemoveToBeProcessed(range))
+                                    .await?;
                             }
                             _ => {}
                         }
                         self.send_command(DisplayCommand::RefreshErrorRange(None))
+                            .await?;
+                        self.send_command(DisplayCommand::GotoTip).await?;
+                        self.send_command(DisplayCommand::ContinueProcessing)
                             .await?;
 
                         log::info!("Popped last state from processed ones");
@@ -127,7 +135,7 @@ impl ResponseProcessor {
                             if error_state == ErrorState::Ok {
                                 state.last_error_range = None;
                             }
-                            state.continue_processing();
+                            // state.continue_processing();
 
                             ops_to_remove
                         };
@@ -147,13 +155,17 @@ impl ResponseProcessor {
                             self.send_command(DisplayCommand::RemoveToBeProcessed(op.range))
                                 .await?;
                         }
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
                     }
                     (Optional(None), Some(ClientCommand::ShowGoals(_))) => {
                         {
                             let mut state = self.state.lock().unwrap();
-                            state.continue_processing();
+                            // state.continue_processing();
                         }
                         self.send_command(DisplayCommand::OutputGoals(vec![], vec![], vec![]))
+                            .await?;
+                        self.send_command(DisplayCommand::ContinueProcessing)
                             .await?;
                     }
                     (
@@ -162,15 +174,19 @@ impl ResponseProcessor {
                     ) => {
                         {
                             let mut state = self.state.lock().unwrap();
-                            state.continue_processing();
+                            // state.continue_processing();
                         }
                         self.send_command(DisplayCommand::OutputGoals(fg, bg, gg))
+                            .await?;
+                        self.send_command(DisplayCommand::ContinueProcessing)
                             .await?;
                     }
 
                     _ if error_state != ErrorState::Ok => {
-                        let mut state = self.state.lock().unwrap();
-                        state.continue_processing();
+                        // let mut state = self.state.lock().unwrap();
+                        // state.continue_processing();
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
                     }
                     (
                         Pair(box StateId(state_id), box Pair(box union, _)),
@@ -192,11 +208,13 @@ impl ResponseProcessor {
                                 state_id: new_state_id,
                                 range: range.clone(),
                             });
-                            state.continue_processing();
+                            // state.continue_processing();
                         }
                         self.send_command(DisplayCommand::RefreshErrorRange(None))
                             .await?;
                         self.send_command(DisplayCommand::AddToProcessed(range))
+                            .await?;
+                        self.send_command(DisplayCommand::ContinueProcessing)
                             .await?;
 
                         log::debug!("Added code to processed operations");
@@ -214,8 +232,10 @@ impl ResponseProcessor {
 
                 match last_command {
                     _ if error_state != ErrorState::Ok => {
-                        let mut state = self.state.lock().unwrap();
-                        state.continue_processing();
+                        // let mut state = self.state.lock().unwrap();
+                        // state.continue_processing();
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
                     }
                     Some(ClientCommand::Init) => {
                         // TODO: failed to init
@@ -229,19 +249,33 @@ impl ResponseProcessor {
                             .await?;
 
                         {
-                            let mut state = self.state.lock().unwrap();
-                            state.continue_processing();
+                            // let mut state = self.state.lock().unwrap();
+                            // state.continue_processing();
                         }
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
                     }
                     Some(ClientCommand::BackTo(op)) => {
                         self.discard_states_until(safe_state_id).await?;
                         self.handle_error(Some(op.range), message, false).await?;
                         {
-                            let mut state = self.state.lock().unwrap();
-                            state.continue_processing();
+                            // let mut state = self.state.lock().unwrap();
+                            // state.continue_processing();
                         }
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
                     }
                     c => {
+                        {
+                            // let mut state = self.state.lock().unwrap();
+                            // state.continue_processing();
+                        }
+                        self.discard_states_until(safe_state_id).await?;
+                        self.send_command(DisplayCommand::ColorResult(message.error(), true))
+                            .await?;
+                        self.send_command(DisplayCommand::ContinueProcessing)
+                            .await?;
+
                         log::error!("Command {:?} caused a failure", c);
                     }
                 }

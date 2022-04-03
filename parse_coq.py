@@ -1,233 +1,381 @@
-#!/usr/bin/env python3
-
 import sys
+from collections import deque
 from dataclasses import dataclass, field
+import time
 
-if len(sys.argv) != 4 and len(sys.argv) != 6:
-    print(
-        "Need 3 or 5 arguments: <BEGINNING_LINE> <BEGINNING_COLUMN> (next|to <TARGET_LINE> <TARGET_COLUMN>)",
-        file=sys.stderr)
-    sys.exit(1)
+
+@dataclass
+class State:
+    """
+    The base class for all state representation in the state machine.
+    """
+    pass
+
+
+@dataclass
+class StateString(State):
+    """
+    A state indicating that the state machine feel inside a `"`-delimited string.
+    """
+    pass
+
+
+@dataclass
+class StateStringBackslash(State):
+    """
+    A state for when we are inside a string but we encountered a `\`.
+    """
+    pass
+
+
+@dataclass
+class StateComment(State):
+    """
+    A state which indicates that the reader is inside a comment.
+    A comment has the general shape `(*<...>*)` where `<...>` is any sequence of characters
+      (including `*` and `)` as long as they are not next to each other).
+    """
+    at_beginning_of_coq_line: bool = field(default=False)
+
+
+@dataclass
+class StateBeginComment(State):
+    """
+    This state indicates that we have found a `(`, but we have yet to decide
+      whether we found an actual comment (when `*` succedes) or not.
+    """
+    at_beginning_of_coq_line: bool = field(default=False)
+
+
+@dataclass
+class StateEndComment(State):
+    """
+    We are in a comment and we found a `*`.
+    Whether this comment is to be ended or not is yet to be decided from the next character read
+      (if it is `)` or not).
+    """
+    at_beginning_of_coq_line: bool = field(default=False)
+
+
+@dataclass
+class StateBeginProof(State):
+    """
+    UNUSED
+    """
+    pass
+
+
+@dataclass
+class StateEOL(State):
+    """
+    We have encountered a `.`, but it is located right after an alphanumerical character.
+    This may be a qualified identifier!
+    This will be decided from the next character read (if it is an alphabetical character).
+    """
+    pass
+
+
+@dataclass
+class StateBullet(State):
+    """
+    A state indicating that we are currently parsing a Coq bullet, to start a new subproof.
+
+    Attributes:
+      bullet_style (str): the current style of bullet (one of `+`, `*`, `-`) which has already been parsed.
+    """
+    bullet_style: str
+
+
+@dataclass
+class StateWSEOL(State):
+    """
+    We have encountered a whitespace, which if followed by a `.` indicates a statement end.
+    """
+    pass
 
 
 def lazy_read_stdin():
     """
-  Lazily read stdin, characters per characters until EOF occurs.
-  """
-    while (line := sys.stdin.readline()):
-        # print(f'line read: {line.__repr__()}', file=sys.stderr)
+    Lazily read stdin, characters per characters until EOF occurs.
 
+    This is useful as reading the entire stdin may yield a very big string, which may
+      take too much time to load/create.
+    Instead, performance is rather predictible because if the end of a statement is at
+      the same position in a stream of 50 to multiple billions of characters,
+      the same number of characters should have been read in the end.
+    """
+    while (line := sys.stdin.readline()):
         for c in line:
             yield c
 
 
-@dataclass
-class State: pass
-@dataclass
-class StateString(State): pass
-@dataclass
-class StateStringBackslash(State): pass
-@dataclass
-class StateComment(State):
-  at_beginning_of_coq_line: bool = field(default = False)
-@dataclass
-class StateBeginComment(State):
-  at_beginning_of_coq_line: bool = field(default = False)
-@dataclass
-class StateEndComment(State):
-  at_beginning_of_coq_line: bool = field(default = False)
-@dataclass
-class StateBeginProof(State): pass
-@dataclass
-class StateEOL(State): pass
-@dataclass
-class StateBullet(State): pass
-
-_, begin_line, begin_column, command, *rem = sys.argv
-if command == "to":
-    target_line, target_column = map(int, rem)
-else:
-    target_line = 0
-    target_column = 0
-begin_line = int(begin_line)
-begin_column = int(begin_column)
-
-# TODO: handle the `to` command
-
-# The state stack, used to push/pop syntactic classes like strings, comments, etc
-states = []
-
-state_line = begin_line
-state_column = begin_column
-at_beginning_of_coq_line = True
-any_found = False
-code = ""
-
-last_char = None
+def escape(code):
+    """
+    Escape a slice of Coq code to make it safe to include in `"`-enclosed strings.
+    """
+    return code.replace('"', '\\"').replace('\n', '\\n')
 
 
 def reached_target():
     """
-  Returns `True` when the target position has been reached, else `False`.
-  """
-    return state_line > target_line or (state_line == target_line
-                                        and state_column >= target_column)
+    Checks whether we have reached our target or not (if command is `to`).
+    If command is `next`, always return `True`.
+    """
 
+    global command, current_line, current_column, target_line, target_column
 
-def escape_quotes(code):
-  return code.replace('"', '\\"')
+    if command == 'next':
+        return True
+    if current_line > target_line or (current_line == target_line
+                                      and current_column > target_column):
+        # Reaching the target means either:
+        # - the current line has gone past the target line, in which case our target has clearly been reached.
+        # - the current line is equal to the target line, but the current column has gone past the target column.
+        return True
+    return False
 
 
 def yield_position():
     """
-  Print the current position as `<line>.<col>,<line>.<col>`.
-  Return `True` if we should end the main loop, else `False` to continue processing.
-  """
-    global begin_line, begin_column, any_found, code
+    Send the current position, along with the code, following the format
+      `{b_line}.{b_col},{e_line}.{e_col} "{escaped code}"`.
+    """
+    global begin_line, begin_column, current_line, current_column, any_found, code, at_beginning_of_coq_line
 
-    # print the current range to stdout
-    print(f'{begin_line}.{begin_column},{state_line}.{state_column} "{escape_quotes(code)}"')
+    print(
+        f'{begin_line}.{begin_column},{current_line}.{current_column} "{escape(code)}"'
+    )
     sys.stdout.flush()
-    
-    begin_line = state_line
-    begin_column = state_column + 1
+
+    #current_column += 1
+    begin_line = current_line
+    begin_column = current_column + 1
     code = ""
     any_found = True
+    at_beginning_of_coq_line = True
 
-    return command == "next" or (command == "to" and reached_target())
+    return reached_target()
 
 
-# Iterate through all the characters from stdin
-for char in lazy_read_stdin():
-    code += char
-    #print(f'{at_beginning_of_coq_line} - {state_line}:{state_column} {char}: [{" ".join(map(str, states))}]', file=sys.stderr)
+def parse(c):
+    """
+    Try to parse the character given from the current state queue.
+    This is basically a state machine.
 
-    last_known_state = states[-1] if len(states) > 0 else None
+    Args:
+      c (str): The character to process on this iteration of the loop.
+    """
 
-    if type(last_known_state) is StateEOL:
-        if char.isspace():
-            state_column -= 1
+    global states, code, current_line, current_column, at_beginning_of_coq_line
+
+    state = states[0] if states else None
+    current_state = type(state) if state is not None else None
+
+    if current_state is StateEOL:
+        # We have encountered a `.` just after this character.
+        # This means that if `c` is a non-letter character, then we have found a Coq statement
+        #   else it is most likely a qualified identifier.
+        if c.isalpha():
+            # We are parsing a qualified identifier. Don't stop there, just pop the current state.
+            states.popleft()
+        else:
+            # Here we are, we have found a non-letter character.
+            # This means that our Coq statement is finished.
+            #
+            # 1. Remove the last character inputted (just in case it isn't a whitespace)
+            # 2. Backtrack one column
+            # 3. Yield the position
+            # 4. Move forward one column
+            # 5. Tell that we are beginning a new Coq statement
+            # 6. Add the character removed (which is `c`) and try parsing again from it
+            # 7. Remove the last state: we are not checking if we reached EOL anymore after this
+            code, current_column = code[:-1], current_column - 1
             if yield_position():
-                break
-            state_column += 1
-        at_beginning_of_coq_line = True
-        last_known_state = states[-1] if len(states) > 0 else None
+                return False
+            code, current_column = code + c, current_column + 1
+            states.popleft(
+            )  # NOTE: the whole `if-else` can be reduced to only an `if`
 
-    if char == '"':
-        if type(last_known_state) in [
-                StateString, StateBeginComment, StateEndComment
-        ]:
-            # If we encounter `"` and we are either in a string, starting or ending a comment
-            # then just pop the last state
-            states.pop()
-        elif type(last_known_state) not in [StateStringBackslash, StateComment]:
-            # If the last known state is not encountering a `\` in a string, or being
-            # inside a comment, then we are going inside a string
-            states.append(StateString())
-        elif type(last_known_state) is StateStringBackslash:
-            # If the last known state is encountering a `\`, simply pop it
-            states.pop()
-    elif char == '(':
-        # When we encounter a `(`, if we are not in a string, then try to start
-        # a comment
-        if type(last_known_state) in [StateBeginComment, StateEndComment]:
-            states.pop()
-        if type(last_known_state) is not StateString:
-            states.append(StateBeginComment(at_beginning_of_coq_line))
-    elif char == ')' and type(last_known_state) is StateEndComment:
-        states.pop()
-        states.pop()
-        at_beginning_of_coq_line = last_known_state.at_beginning_of_coq_line
-    elif char == '*':
-        # If we encounter a `*`, then:
-        # - if we are inside a comment, then try starting the end of the comment
-        # - if we are at the beginning of a line, then treat as a bullet
-        # - if we are right after a `(`, then start a comment
-        if type(last_known_state) is StateBeginComment:
-            states.pop()
-            states.append(StateComment(last_known_state.at_beginning_of_coq_line))
-        elif type(last_known_state) == StateComment:
-            states.append(StateEndComment(last_known_state.at_beginning_of_coq_line))
-        elif at_beginning_of_coq_line and type(last_known_state) is not StateBullet:
-            states.append(StateBullet())
-            at_beginning_of_coq_line = True
-    elif char == '.':
-        # If we encounter a `.` and we are not inside a string or a comment
-        # treat it as the end of a coq statement IF either the character before or the character
-        # after is blank (space, tab, newline, ...)
-        if type(last_known_state) not in [StateComment, StateString]:
-            if last_char is not None and not last_char.isspace():
-                states.append(StateEOL())
-            else:
-                at_beginning_of_coq_line = True
-                if yield_position():
-                    break
-        elif type(last_known_state) in [
-                StateBeginComment, StateEndComment, StateStringBackslash
-        ]:
-            states.pop()
-    elif char in ['-', '+'
-                  ] and at_beginning_of_coq_line and type(last_known_state) not in [
-                      StateComment, StateEndComment, StateString, StateStringBackslash
-                  ]:
-        if type(last_known_state) is not StateBullet:
-            # If we are not already in a bullet, go into it
-            states.append(StateBullet())
-        at_beginning_of_coq_line = True
-    elif char == '{' and type(last_known_state) not in [
-            StateString, StateComment, StateEndComment, StateStringBackslash
-    ] and at_beginning_of_coq_line:
-        # We are starting a new subproof
-        #states.append(StateBeginProof())
-        at_beginning_of_coq_line = True
-        if yield_position():
-            break
-    elif char == '}' and at_beginning_of_coq_line:
-        # We are ending a subproof
-        states.pop()
-        at_beginning_of_coq_line = True
-        if yield_position():
-            break
-    elif type(last_known_state) in [
-        StateStringBackslash, StateBeginComment, StateEndComment
-    ]:
-        states.pop()
-    elif type(last_known_state) == StateBullet:
-        state_column -= 1
-        if yield_position():
-            break
-        state_column += 1
-        states.pop()
+            return parse(c)
 
-    # if we ended a comment, do not flip the variable `at_beginning_of_coq_line`
-    # (we may have written `something. (*  *) - something_else`, in which case the `-` is at the beginning
-    # of the statement)
-    if char == ')' and type(last_known_state) in [StateEndComment, StateComment]:
-        pass
-    # If we encounter a newline, do not change the beginning_of_line state
-    # because we may be at the beginning of a coq statement, or in the middle.
-    elif char == '\n':
-        pass
-    # When character is not a end of statement or a space, we are not at the beginning
-    # of a coq statement anymore
-    elif char not in [
-            '.', ' ', '\t', '-', '*', '+', '{', '}'
-    ] and type(last_known_state) not in [StateComment, StateEndComment]:
-        at_beginning_of_coq_line = False
+    elif current_state is StateString:
+        # We are inside of a string.
+        # The only way to escape the string is to have `c == '"'`, which immediately
+        #   ends the current string.
+        if c == '"':
+            # We have found the `"` character, so we can end the string right here right now.
+            states.popleft()
+        elif c == '\\':
+            # Hold on, we have found a `\` inside a string.
+            # The next character must be ignored at all cost!
+            states.appendleft(StateStringBackslash())
+        # If any other character is found, do nothing because it will not impact the current state.
 
-    if char == '\n':
-        state_line += 1
-        state_column = 1
+    elif current_state is StateStringBackslash:
+        # We have seen a `\` at the last iteration, which means that this character is meaningless
+        #   (may it be an error, Coq wil report it).
+        # So we can simply pop this intermediate state.
+        states.popleft()
+
+    elif current_state is StateComment:
+        # We are currently parsing a comment. However, those are tricky to handle.
+        # Basically, a comment has the general shape `(*<...>*)` where `<...>` can be composed of any character
+        #   (including `*` and `)` as long as they are not next to each other).
+        #
+        # - So if we encounter a `*`, we need to jump to an intermediate state which will handle
+        #   whether the comment has been ended or not.
+        #   Also, we need to record whether the comment was currently at the beginning of a Coq statement
+        #   in order not to forget about it and mess everything up.
+        # - For any other character, simply continue as they will not impact the current state.
+        if c == '*':
+            states.appendleft(
+                StateEndComment(state.at_beginning_of_coq_line))
+
+    elif current_state is StateBeginComment:
+        # A `(` has been seen just before, but we don't currently know if we are really starting a comment or not.
+        # We have to see a `*` right now for it to be considered a comment opening.
+        # In case none was seen, simply pop this state because it is garbage.
+        if c == '*':
+            # Yay! There's a `*`, so let's start a new comment here.
+            #
+            # 1. Pop the current state because it is now garbage
+            # 2. Push a new comment state, recording if we are at the beginning of a line
+            st = states.popleft()
+            states.appendleft(StateComment(st.at_beginning_of_coq_line))
+        else:
+            # Because we are not opening a new comment, we know that we are not at the beginning of
+            #   a Coq statement anymore.
+            states.popleft()
+            at_beginning_of_coq_line = False
+
+    elif current_state is StateEndComment:
+        # Hey! We are inside a comment but a `*` has been seen right before this.
+        #
+        # - If the current character is a `)`, we need to pop the comment state and this one.
+        #   Don't forget to also restore information about the beginning of the line!
+        # - Else we can just pop this state as it is garbage.
+        if c == ')':
+            st = states.popleft()
+            states.popleft(
+            )  # NOTE: both comment states contain the information we need
+            #   so `st =` can really be for any of those two.
+            at_beginning_of_coq_line = st.at_beginning_of_coq_line
+        else:
+            states.popleft()
+
+    elif current_state is StateBullet:
+        # Can we continue parsing a bullet?
+        # Yes, if the next character is the same style as the currently parsed bullet.
+        #
+        # However, if it is not, just backtrack, yield the position,
+        #   go forward and try parsing again from this position.
+        if c == state.bullet_style:
+            # We have found the current bullet style, so let's continue trying to parse
+            #   a bullet.
+            pass
+        else:
+            # Stop the current bullet, backtrack and yield the position, assume we are
+            #   at the beginning of a line, and then trying parsing again from the current character.
+            code, current_column = code[:-1], current_column - 1
+            if yield_position():
+                return False
+            code, current_column = code + c, current_column + 1
+            states.popleft()
+
+            return parse(c)
+
+    elif current_state is StateWSEOL:
+        # There is a whitespace right before, but we still need to decide if we are ending a
+        #   statement (if it is followed by a `.`) or not.
+        #
+        # - If `.` is the current character, end a Coq statement right here.
+        # - Otherwise, pop the state and try parsing again the current character within the old state.
+        if c == '.':
+            # Yay! We can finally end the current statement. We did it!
+            # Just yield the current position and start fresh.
+            if yield_position():
+                return False
+            states.popleft()
+        else:
+            # Ok so just ignore this garbage state, and restart parsing on the current character.
+            states.popleft()
+            return parse(c)
+
     else:
-        state_column += 1
+        # There is no state in the state machine.
+        # We perform here a case analysis on some characters (e.g. `(` or `{`) to see if they
+        #   create new states or not.
+        #
+        # - `(` pushes a `StateBeginComment` because we may start a new comment here.
+        # - `{` immediately yields the position as this starts a new bullet style
+        #   (new subproof, must be ended by `}`).
+        #
+        #   TODO: this has to be done only within `Proof. ??? Qed.`! Because the same
+        #     symbol is used to denote implicit parameters.
+        #     We may simply not support these, for simplicity.
+        # - `}` yields the current position as it stops the current subproof.
+        # - `*`, `-`, `+` all start a new bullet ONLY if at the beginning of a line.
+        # - `"` starts a string (pushes a `StateString`).
+        # - `.` jumps to a state where we want to determine if we are parsing a qualified identifier
+        #   or the end of a statement.
+        # - ` `, `\t` push a new `StateWSEOL` in case we are ending a statement.
+        # - Otherwise, ignore and continue not at the beginning of a line.
+        if c == '(':
+            states.appendleft(StateBeginComment(at_beginning_of_coq_line))
+        elif c in ['*', '+', '-'] and at_beginning_of_coq_line:
+            states.appendleft(StateBullet(c))
+        elif c == '"':
+            states.appendleft(StateString())
+        elif c == '.':
+            states.appendleft(StateEOL())
+        elif c.isspace():
+            states.appendleft(StateWSEOL())
+        else:
+            at_beginning_of_coq_line = False
 
-    last_char = char
-else:
-    if not any_found:
-        yield_position()
+    # In any case, because we have read a new character, we need to increment the current location.
+    # Attention: if the current character is a `\n`, we need to increment the line, not the column
+    #   and set the column to 1 (emulating a carriage return).
+    if c == '\n':
+        current_line, current_column = current_line + 1, 1
+    else:
+        current_column += 1
 
-# Commit all found positions
-print()
+    return True
 
-# Exit successfully
-sys.exit(0)
+
+if __name__ == '__main__':
+    if len(sys.argv) not in [4, 6]:
+        print(
+            "Need 3 or 5 arguments: <BEGINNING_LINE> <BEGINNING_COLUMN> (next|to <TARGET_LINE> <TARGET_COLUMN>)",
+            file=sys.stderr)
+        sys.exit(1)
+
+    begin_line, begin_column, command, *rem = [
+        *map(int, sys.argv[1:3]), *sys.argv[3:]
+    ]
+    if command == "to":
+        target_line, target_column = map(int, rem)
+    else:
+        target_line, target_column = 0, 0
+
+    states = deque()
+
+    current_line = begin_line
+    current_column = begin_column
+    at_beginning_of_coq_line = True
+    any_found = False
+    code = ""
+
+    for c in lazy_read_stdin():
+        code += c
+
+        must_continue = parse(c)
+        if not must_continue:
+            break
+
+    else:
+        if not any_found:
+            yield_position()
+
+    sys.exit(0)

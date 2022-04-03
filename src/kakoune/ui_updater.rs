@@ -1,4 +1,7 @@
-use std::{io, sync::Arc};
+use std::{
+    io,
+    sync::{Arc, Mutex},
+};
 
 use tokio::{
     fs::{File, OpenOptions},
@@ -12,22 +15,26 @@ use crate::{
     files::{goal_file, result_file},
     range::Range,
     session::{edited_file, session_id, temporary_folder, Session},
+    state::State,
 };
 
 use super::command_line::kak;
 
 pub struct KakouneUIUpdater {
     session: Arc<Session>,
+    state: Arc<Mutex<State>>,
     kakoune_display_rx: mpsc::UnboundedReceiver<DisplayCommand>,
 }
 
 impl KakouneUIUpdater {
     pub fn new(
         session: Arc<Session>,
+        state: Arc<Mutex<State>>,
         kakoune_display_rx: mpsc::UnboundedReceiver<DisplayCommand>,
     ) -> Self {
         Self {
             session,
+            state,
             kakoune_display_rx,
         }
     }
@@ -46,6 +53,8 @@ impl KakouneUIUpdater {
                         DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
                         DisplayCommand::RefreshErrorRange(range) => self.refresh_error_range(range).await?,
                         DisplayCommand::RemoveToBeProcessed(range) => self.remove_to_be_processed(range).await?,
+                        DisplayCommand::GotoTip => self.goto_tip().await?,
+                        DisplayCommand::ContinueProcessing => self.continue_processing().await?,
                     }
                 }
             }
@@ -53,6 +62,22 @@ impl KakouneUIUpdater {
     }
 
     // ---------------------
+
+    async fn continue_processing(&mut self) -> io::Result<()> {
+        self.state.lock().unwrap().continue_processing();
+        Ok(())
+    }
+
+    async fn goto_tip(&mut self) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-goto-tip }}"#,
+                edited_file(self.session.clone())
+            ),
+        )
+        .await
+    }
 
     async fn remove_to_be_processed(&mut self, range: Range) -> io::Result<()> {
         kak(

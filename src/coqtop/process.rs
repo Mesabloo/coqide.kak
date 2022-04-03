@@ -2,7 +2,6 @@ use std::{io, process::Stdio, sync::Arc};
 
 use tokio::{
     io::AsyncWriteExt,
-    join,
     net::TcpListener,
     process::{Child, ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
@@ -122,7 +121,7 @@ impl CoqIdeTop {
 
 /// Creates a new [`TcpListener`] listening on `127.0.0.1:0`, and returns both the
 /// listener and the port it is listening on.
-async fn create_listener() -> io::Result<(TcpListener, u16)> {
+async fn _create_listener() -> io::Result<(TcpListener, u16)> {
     let listen = TcpListener::bind("127.0.0.1:0").await?;
     let port = listen.local_addr()?.port();
 
@@ -132,7 +131,7 @@ async fn create_listener() -> io::Result<(TcpListener, u16)> {
 /// Spawns a new [`COQTOP`] process by feeding it additional flags to take in account.
 async fn coqidetop<const N: usize>(
     _tmp_dir: &String,
-    ports: [u16; 2],
+    _ports: [u16; 2],
     flags: [&str; N],
 ) -> io::Result<Child> {
     Command::new(COQTOP)

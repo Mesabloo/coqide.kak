@@ -86,7 +86,7 @@ async fn main() {
         kakoune_display_tx,
         state.clone(),
     );
-    let mut ui_updater = KakouneUIUpdater::new(session.clone(), kakoune_display_rx);
+    let mut ui_updater = KakouneUIUpdater::new(session.clone(), state.clone(), kakoune_display_rx);
 
     let stop_rx1 = stop_rx.clone();
     let stop_rx2 = stop_rx.clone();
@@ -99,28 +99,34 @@ async fn main() {
     let handle2 = tokio::spawn(async move { client_bridge.handle_commands_until(stop_rx2).await });
     let handle3 = tokio::spawn(async move { response_processor.process_until(stop_rx3).await });
     let handle4 = tokio::spawn(async move { ui_updater.update_until(stop_rx4).await });
+    let handle5 = tokio::spawn(async move { stop_rx.changed().await });
 
-    loop {
-        tokio::select! {
-            Ok(_) = stop_rx.changed() => break,
-            else => {}
+    let res = tokio::try_join!(handle5, handle4, handle1, handle2, handle3);
+
+    match res {
+        Ok((r5, r4, r1, r2, r3)) => {
+            let coqtop_bridge = r1.unwrap();
+            r2.unwrap();
+            r3.unwrap();
+            r4.unwrap();
+            r5.unwrap();
+
+            log::debug!("Stopping CoqIDE daemon");
+
+            coqtop_bridge.quit().await.unwrap();
+
+            kak(
+                &session_id(session.clone()),
+                format!(
+                    r#"evaluate-commands -buffer '{}' %{{ coqide-purge }}"#,
+                    edited_file(session.clone())
+                ),
+            )
+            .await
+            .unwrap();
+        }
+        Err(e) => {
+            panic!("{:?}", e);
         }
     }
-    let coqtop_bridge = handle1.await.unwrap().unwrap();
-    handle2.await.unwrap().unwrap();
-    handle3.await.unwrap().unwrap();
-    handle4.await.unwrap().unwrap();
-
-    log::debug!("Stopping CoqIDE daemon");
-
-    kak(
-        &session_id(session.clone()),
-        format!(
-            r#"evaluate-commands -buffer '{}' %{{ coqide-purge }}"#,
-            edited_file(session.clone())
-        ),
-    )
-    .await
-    .unwrap();
-    coqtop_bridge.quit().await.unwrap();
 }

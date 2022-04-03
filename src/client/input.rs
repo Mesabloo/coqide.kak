@@ -51,7 +51,7 @@ impl ClientInput {
             input_fifo(session.clone())
         );
 
-        let (command_tx, command_rx) = broadcast::channel(25);
+        let (command_tx, command_rx) = broadcast::channel(500);
 
         Ok(Self {
             cmd_disp_tx,
@@ -68,15 +68,12 @@ impl ClientInput {
         loop {
             tokio::select! {
                 Ok(_) = stop.changed() => break Ok(()),
-                Ok(cmd) = self.command_rx.recv() => {
-                    let (go_further, error_state) = {
-                        let state = self.state.lock().unwrap();
-                        (state.can_go_further(), state.error_state)
-                    };
+                Ok(cmd) = self.command_rx.recv(), if self.state.lock().unwrap().can_go_further() => {
+                    let error_state = self.state.lock().unwrap().error_state;
 
                     match cmd {
                         ClientCommand::Quit => self.process_command(ClientCommand::Quit, error_state).await?,
-                        cmd =>  if go_further && error_state != ErrorState::ClearQueue {
+                        cmd =>  if error_state != ErrorState::ClearQueue {
                             self.state.lock().unwrap().stop_processing();
                             self.process_command(cmd, error_state).await?;
                         }
@@ -178,6 +175,7 @@ impl ClientInput {
                     "No earlier operations to rewind to (queue length: {})",
                     self.state.lock().unwrap().operations.len()
                 );
+                self.state.lock().unwrap().continue_processing();
             }
         }
 

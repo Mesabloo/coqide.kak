@@ -269,21 +269,27 @@ define-command -docstring '
     evaluate-commands %sh{
       case $kak_selection in
         (*[![:space:]]*)
-          for line in "$(python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column next <<< "$kak_selection")"; do
-            range="${line%% *}"
-            code="${line#* }"
+            IFS=$'\n'
+            set -- $(python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column next <<< "$kak_selection")
+            while [ $# -gt 0 ]; do
+              range="${1%% *}"
+              code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")
 
-            echo "coqide-push-to-be-processed '$range'"
-            echo "coqide-send-command %§next $range $code§"
-            echo "coqide-send-command %§show-goals $range§"
-            echo "coqide-goto-tip"
-          done
+              echo "echo -debug %§next $range $code§"
+
+              echo "coqide-push-to-be-processed '$range'"
+              echo "coqide-send-command %§next $range $code§"
+              echo "coqide-send-command %§show-goals $range§"
+
+              shift
+            done
           ;;
         (*) exit
           ;;
       esac
     }
   }
+  coqide-goto-tip
 }
 
 define-command -docstring '
@@ -331,6 +337,73 @@ define-command -docstring '
       echo "coqide-send-command %§show-goals 1.1,1.1§"
     fi
   }
+}
+
+define-command -docstring '
+
+' -params 0 coqide-move-to %{
+  evaluate-commands -draft -save-regs 'abc' %{
+    set-register b %val{cursor_line}
+    set-register c %val{cursor_column}
+
+    coqide-to-be-processed-range
+    execute-keys %sh{
+      IFS=' .,|' read -r begin_line begin_column end_line end_column _ <<< "$kak_reg_a" 
+      begin_line=${begin_line:-1}
+      begin_column=${begin_column:-1}
+      end_line=${end_line:-1}
+      end_column=${end_column:-1}
+
+      if [ $kak_reg_b -lt $end_line ] || [ $kak_reg_b -eq $end_line -a $kak_reg_c -lt $end_column ]; then
+        echo ""
+        # If the cursor is before the end of the to be processed range, we are trying to backtrack
+        # to a given location.
+        # Therefore, don't select anything from the buffer.
+      else
+        keys="${end_line}ggh"
+        if [ "$end_column" -gt 1 ]; then
+          keys="${keys}${end_column}l"
+        fi
+        keys="${keys}Ge<a-;>" 
+        
+        echo "$keys"
+      fi
+    }
+    evaluate-commands %sh{
+      IFS=' .,|' read -r begin_line begin_column end_line end_column _ <<< "$kak_reg_a" 
+      begin_line=${begin_line:-1}
+      begin_column=${begin_column:-1}
+      end_line=${end_line:-1}
+      end_column=${end_column:-1}
+      
+      if [ $kak_reg_b -lt $end_line ] || [ $kak_reg_b -eq $end_line -a $kak_reg_c -lt $end_column ]; then
+        echo "coqide-invalidate-state $kak_reg_b $kak_reg_c"
+        # And simply invalidate the state up until the saved line/column positions
+      else 
+        case $kak_selection in
+          (*[![:space:]]*)
+            last_range=
+            IFS=$'\n'
+            set -- $(python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column to $kak_reg_b $kak_reg_c <<< "$kak_selection")
+            while [ $# -gt 0 ]; do
+              range="${1%% *}"
+              code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")
+
+              echo "coqide-push-to-be-processed '$range'"
+              echo "coqide-send-command %§next $range $code§"
+              last_range="$range"
+
+              shift
+            done
+            echo "coqide-send-command %§show-goals ${last_range:-'1.1,1.1'}§"
+            ;;
+          (*) exit
+            ;;
+        esac
+      fi
+    }
+  }
+  coqide-goto-tip
 }
 
 #############################################################################

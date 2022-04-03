@@ -102,6 +102,7 @@ Here are some erroneous or incomplete features:
 - Output `Ready in ..., proving ...` in an info box at all time, in normal mode.
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
 - Color admitted ranges in yellow.
+- Parse a `_CoqProject` file in one of the directories containing this file (up until the root `/`).
 - Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

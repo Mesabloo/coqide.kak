@@ -123,7 +123,7 @@ impl KakouneUIUpdater {
     ) -> io::Result<()> {
         let result_buffer = result_file(&temporary_folder(self.session.clone()));
 
-        let (mut content, colors) = extract_colors(richpp, 1);
+        let (mut content, colors) = extract_colors(richpp, 1usize, 1usize);
 
         let mut file = if content.is_empty() || !append {
             File::create(&result_buffer).await?
@@ -222,12 +222,16 @@ impl KakouneUIUpdater {
 }
 
 /// Extract the message and the colors from a [`ProtocolRichPP`] starting at the given line number.
-fn extract_colors(richpp: ProtocolRichPP, starting_line: usize) -> (String, Vec<String>) {
+fn extract_colors(
+    richpp: ProtocolRichPP,
+    starting_line: usize,
+    starting_column: usize,
+) -> (String, Vec<String>) {
     let ProtocolRichPP::RichPP(parts) = richpp;
     let mut message = String::new();
     let mut colors = Vec::new();
     let mut current_line = starting_line;
-    let mut current_column = 1usize;
+    let mut current_column = starting_column;
 
     for part in parts {
         let color_name = color_name(&part);
@@ -309,35 +313,35 @@ fn color_name(part: &ProtocolRichPPPart) -> String {
 
 /// Transforms a [`ProtocolValue::Goal`] into its colored textual representation.
 fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>, usize) {
-    if let ProtocolValue::Goal(_, hyps, ccl) = goal {
+    if let ProtocolValue::Goal(box ProtocolValue::Str(name), hyps, ccl) = goal {
         let mut message = String::new();
         let mut colors = Vec::new();
 
         let mut max_size = 0usize;
 
         for hyp in hyps {
-            let (msg, mut cols) = extract_colors(hyp, line);
+            let (msg, mut cols) = extract_colors(hyp, line, 2usize);
             line += 1;
 
-            max_size = max_size.max(msg.len());
+            max_size = max_size.max(msg.len() + 2);
 
             message = if message.is_empty() {
-                msg
+                format!(" {} ", msg)
             } else {
-                format!("{}\n{}", message, msg)
+                format!("{}\n {} ", message, msg)
             };
             colors.append(&mut cols);
         }
-        let (msg, mut cols) = extract_colors(ccl, line + 1);
+        let (msg, mut cols) = extract_colors(ccl, line + 1, 2usize);
 
-        max_size = max_size.max(msg.len());
+        max_size = max_size.max(msg.len() + 2);
         let middle_line = "─".repeat(max_size);
         message = if message.is_empty() {
             line += 2;
-            format!("{}\n{}\n", middle_line, msg)
+            format!("{} ({})\n {} \n", middle_line, name, msg)
         } else {
             line += 2;
-            format!("{}\n{}\n{}\n", message, middle_line, msg)
+            format!("{}\n{} ({})\n {} \n", message, middle_line, name, msg)
         };
         colors.append(&mut cols);
 

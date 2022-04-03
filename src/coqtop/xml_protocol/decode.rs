@@ -461,12 +461,42 @@ impl FeedbackContent {
             "processingin" => {
                 assert_decode_error(!xml.children.is_empty(), || InvalidFeedbackContent)?;
 
-                Ok(FeedbackContent::Processing(
+                Ok(FeedbackContent::ProcessingIn(
                     xml.children[0].as_node().cloned().unwrap(),
                 ))
             }
             "addedaxiom" => Ok(FeedbackContent::AddedAxiom),
-            _ => unreachable!(),
+            "complete" => Ok(FeedbackContent::Complete),
+            "incomplete" => Ok(FeedbackContent::Incomplete),
+            "globref" => Ok(FeedbackContent::GlobRef(
+                xml.children[0].as_node().cloned().unwrap(),
+            )),
+            "globdef" => Ok(FeedbackContent::GlobDef(
+                xml.children[0].as_node().cloned().unwrap(),
+            )),
+            "inprogress" => Ok(FeedbackContent::InProgress(
+                xml.children[0].as_node().cloned().unwrap(),
+            )),
+            "filedependency" => {
+                assert_decode_error(xml.children.len() == 2, || InvalidFeedbackContent)?;
+
+                let name = ProtocolValue::decode(xml.children[0].as_node().cloned().unwrap())?;
+                let path = ProtocolValue::decode(xml.children[1].as_node().cloned().unwrap())?;
+
+                Ok(FeedbackContent::FileDependency(name, path))
+            }
+            "fileloaded" => {
+                assert_decode_error(xml.children.len() == 2, || InvalidFeedbackContent)?;
+
+                let name = ProtocolValue::decode(xml.children[0].as_node().cloned().unwrap())?;
+                let path = ProtocolValue::decode(xml.children[1].as_node().cloned().unwrap())?;
+
+                Ok(FeedbackContent::FileLoaded(name, path))
+            }
+            "custom" => Ok(FeedbackContent::Custom(
+                xml.children[0].as_node().cloned().unwrap(),
+            )),
+            v => panic!("Unrecognized feedback content type '{}'", v),
         }
     }
 }

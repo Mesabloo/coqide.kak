@@ -101,8 +101,8 @@ async fn main_loop(
         if let Some(call) = call {
             let (response, feedback) = coqtop_bridge.ask(call).await?;
 
-            let mut display = coqtop_processor.process_feedback(feedback).await?;
-            let mut display2 = coqtop_processor.process_response(response, cmd).await?;
+            let mut display2 = coqtop_processor.process_feedback(feedback).await?;
+            let mut display = coqtop_processor.process_response(response, cmd).await?;
 
             // When we receive some feedback, we want to process it first.
             // In any case, this will not change the global application state, compared

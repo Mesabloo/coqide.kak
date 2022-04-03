@@ -231,6 +231,10 @@ impl ClientBridge {
             state.error_state = ErrorState::Ok;
         }
 
-        Ok((None, ClientCommand::IgnoreError, vec![]))
+        Ok((
+            None,
+            ClientCommand::IgnoreError,
+            vec![DisplayCommand::RefreshErrorRange(None)],
+        ))
     }
 }

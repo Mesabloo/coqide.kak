@@ -333,8 +333,8 @@ fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>,
         max_size = max_size.max(msg.len());
         let middle_line = "─".repeat(max_size);
         message = if message.is_empty() {
-            line += 1;
-            format!("{}\n{}", middle_line, msg)
+            line += 2;
+            format!("{}\n{}\n", middle_line, msg)
         } else {
             line += 2;
             format!("{}\n{}\n{}\n", message, middle_line, msg)

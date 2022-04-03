@@ -127,9 +127,25 @@ pub enum FeedbackContent {
     /// Worker status
     WorkerStatus(XMLNode),
     /// Processing some call
-    Processing(XMLNode),
+    ProcessingIn(XMLNode),
     /// Some proof has been temporarily admitted
     AddedAxiom,
+    /// ???
+    Complete,
+    /// ???
+    InProgress(XMLNode),
+    /// ???
+    Incomplete,
+    /// ???
+    GlobRef(XMLNode),
+    /// ???
+    GlobDef(XMLNode),
+    /// ???
+    FileDependency(ProtocolValue, ProtocolValue),
+    /// ???
+    FileLoaded(ProtocolValue, ProtocolValue),
+    /// ???
+    Custom(XMLNode),
 }
 
 /// The level of the message sent by [`COQTOP`].

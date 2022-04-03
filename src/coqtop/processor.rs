@@ -9,7 +9,9 @@ use tokio::sync::broadcast;
 
 use crate::{
     client::commands::types::{ClientCommand, DisplayCommand},
-    coqtop::xml_protocol::types::{FeedbackContent, MessageType, ProtocolRichPP},
+    coqtop::xml_protocol::types::{
+        FeedbackContent, MessageType, ProtocolRichPP, ProtocolRichPPPart,
+    },
     range::Range,
     session::Session,
     state::{ErrorState, Operation, State},
@@ -58,7 +60,7 @@ impl CoqIdeTopProcessor {
                 ProtocolResult::Fail(_, _, _, _) => unreachable!(),
                 ProtocolResult::Feedback(_, _, StateId(state_id), content) => {
                     match last_op {
-                        Some(Operation { state_id: id, .. }) if id != state_id => {}
+                        Some(Operation { state_id: id, .. }) if id > state_id => {}
                         // NOTE: ignore messages which are for previous states
                         _ => match content {
                             FeedbackContent::Message(message_type, message) => match message_type {
@@ -83,6 +85,20 @@ impl CoqIdeTopProcessor {
                                 }
                             },
                             _ if error_state != ErrorState::Ok => {}
+                            FeedbackContent::FileLoaded(Str(name), Str(path)) => {
+                                use ProtocolRichPPPart::*;
+
+                                commands.push_back(DisplayCommand::ColorResult(
+                                    ProtocolRichPP::RichPP(vec![
+                                        Raw("module \"".to_string()),
+                                        Reference(name),
+                                        Raw("\" (".to_string()),
+                                        Path(path),
+                                        Raw(") imported.\n".to_string()),
+                                    ]),
+                                    true,
+                                ));
+                            }
                             _ => {
                                 log::debug!("Received feedback object @{}: {:?}", state_id, content)
                             }

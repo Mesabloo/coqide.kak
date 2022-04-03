@@ -65,10 +65,7 @@ impl CoqIdeTopProcessor {
                         _ => match content {
                             FeedbackContent::Message(message_type, message) => match message_type {
                                 MessageType::Error => {
-                                    commands.push_back(DisplayCommand::ColorResult(
-                                        message.error(),
-                                        true,
-                                    ));
+                                    log::error!("@{}: {}", state_id, message.strip());
                                 }
                                 _ if error_state != ErrorState::Ok => {}
                                 MessageType::Notice | MessageType::Info => {

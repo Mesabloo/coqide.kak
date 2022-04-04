@@ -44,6 +44,9 @@ impl KakouneUIUpdater {
                 DisplayCommand::GotoTip => self.goto_tip().await?,
                 DisplayCommand::AddAxiom(range) => self.add_axiom(range).await?,
                 DisplayCommand::RemoveAxiom(range) => self.remove_axiom(range).await?,
+                DisplayCommand::ShowStatus(path, proof_name) => {
+                    self.show_status(path, proof_name).await?
+                }
             }
         }
 
@@ -51,6 +54,19 @@ impl KakouneUIUpdater {
     }
 
     // ---------------------
+
+    async fn show_status(&mut self, path: String, proof_name: String) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-show-status "{}" "{}" }}"#,
+                edited_file(self.session.clone()),
+                path,
+                proof_name
+            ),
+        )
+        .await
+    }
 
     async fn add_axiom(&mut self, range: Range) -> io::Result<()> {
         kak(

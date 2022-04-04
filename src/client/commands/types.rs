@@ -30,6 +30,8 @@ pub enum ClientCommand {
     ShowGoals(Range),
     /// Internal use: go back to the given state ID.
     BackTo(Operation),
+    /// Show the status of the worker.
+    Status,
 }
 
 /// The type of commands that can be sent back to Kakoune.
@@ -60,4 +62,6 @@ pub enum DisplayCommand {
     AddAxiom(Range),
     /// Remove an axiom from the axiom highlighter.
     RemoveAxiom(Range),
+    /// Show the status of the worker.
+    ShowStatus(String, String),
 }

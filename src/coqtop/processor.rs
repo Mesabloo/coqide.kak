@@ -234,6 +234,23 @@ impl CoqIdeTopProcessor {
                 (Optional(Some(box Goals(fg, bg, _, gg))), ClientCommand::ShowGoals(_)) => {
                     commands.push_back(DisplayCommand::OutputGoals(fg, bg, gg));
                 }
+                (Status(box List(path), box Optional(proof), _, _), ClientCommand::Status) => {
+                    let path = path
+                        .into_iter()
+                        .map(|v| match v {
+                            Str(str) => str,
+                            _ => panic!(),
+                        })
+                        .collect::<Vec<_>>();
+
+                    let proof_name = match proof {
+                        Some(box Str(proof_name)) => proof_name,
+                        None => "".to_string(),
+                        _ => "?".to_string(),
+                    };
+
+                    commands.push_back(DisplayCommand::ShowStatus(path.join("."), proof_name));
+                }
                 (_, _) => todo!(),
             },
             ProtocolResult::Fail(_, _, StateId(safe_state_id), message) => match command {

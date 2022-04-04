@@ -88,6 +88,7 @@ impl ProtocolCall {
                 )
                 .encode()
             ),
+            Status(force) => format!("<call val=\"Status\">{}</call>", force.encode()),
         }
     }
 }

@@ -100,6 +100,7 @@ Here are some erroneous or incomplete features:
 
   A workaround for now is to backtrack by hand until before your cursor.
 - Output `Ready in ..., proving ...` in an info box at all time, in normal mode.
+  (info box is not shown, maybe due to how we connect to Kakoune)
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
 - Parse a `_CoqProject` file in one of the directories containing this file (up until the root `/`).
 - Bugs are yet to be found! If you find any, please report them.

@@ -115,6 +115,7 @@ impl ClientBridge {
                 ClientCommand::Next(range, code),
                 vec![DisplayCommand::RemoveToBeProcessed(range)],
             )),
+            ClientCommand::Status => self.process_status(),
             c => Ok((None, c, vec![])),
         }
     }
@@ -235,6 +236,16 @@ impl ClientBridge {
             None,
             ClientCommand::IgnoreError,
             vec![DisplayCommand::RefreshErrorRange(None)],
+        ))
+    }
+
+    fn process_status(
+        &mut self,
+    ) -> io::Result<(Option<ProtocolCall>, ClientCommand, Vec<DisplayCommand>)> {
+        Ok((
+            Some(ProtocolCall::Status(ProtocolValue::Boolean(false))),
+            ClientCommand::Status,
+            vec![],
         ))
     }
 }

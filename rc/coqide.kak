@@ -280,6 +280,7 @@ define-command -docstring '
               echo "coqide-push-to-be-processed '$range'"
               echo "coqide-send-command %§next $range $code§"
               echo "coqide-send-command %§show-goals $range§"
+              echo "coqide-send-command 'status'"
 
               shift
             done
@@ -335,6 +336,7 @@ define-command -docstring '
       echo "coqide-pop-top-to-be-processed"
       echo "coqide-send-command %§previous§"
       echo "coqide-send-command %§show-goals 1.1,1.1§"
+      echo "coqide-send-command 'status'"
     fi
   }
 }
@@ -396,6 +398,7 @@ define-command -docstring '
               shift
             done
             echo "coqide-send-command %§show-goals ${last_range:-'1.1,1.1'}§"
+            echo "coqide-send-command 'status'"
             ;;
           (*) exit
             ;;
@@ -464,6 +467,7 @@ define-command -docstring '
 ' -hidden -params 2 coqide-invalidate-state %{
   coqide-send-command "rewind-to %arg{1} %arg{2}"
   coqide-send-command "show-goals 1.1,1.1"
+  coqide-send-command 'status'
 }
 
 ##############################################################################
@@ -510,6 +514,28 @@ define-command -docstring '
 }
 
 ###############################################################################
+
+define-command -docstring '
+  Show the status of the `coqidetop` daemon, as `Ready in <module>, proving <name>`.
+
+  Arguments:
+  1. `.`-separated module name
+  2. optional proof name
+' -hidden -params 2 coqide-show-status %{
+  echo -debug "coqide: showing status"
+  
+  evaluate-commands %sh{
+    msg="Ready"
+    if [ ! -z "$1" ]; then
+      msg="${msg} in $1"
+      if [ ! -z "$2" ]; then
+        msg="${msg}, proving $2"
+      fi
+    fi
+
+    echo "info -markup %§{\\}${msg}§"
+  }
+}
 
 define-command -docstring '
   Pop the first range present in the range for to be processed code.

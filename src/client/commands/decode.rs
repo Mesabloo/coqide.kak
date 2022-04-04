@@ -89,6 +89,7 @@ fn parse_command<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
         parse_rewind_to,
         parse_move_to,
         parse_show_goals,
+        parse_status,
         //map(take(1usize), |_| None),
     ))(input)
 }
@@ -178,6 +179,13 @@ fn parse_show_goals<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
             tuple((parse_range, space0, tag("\n"))),
             |(range, _, _)| Some(ClientCommand::ShowGoals(range)),
         )),
+    )(input)
+}
+
+fn parse_status<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
+    preceded(
+        pair(tag("status"), space0),
+        cut(value(Some(ClientCommand::Status), tag("\n"))),
     )(input)
 }
 

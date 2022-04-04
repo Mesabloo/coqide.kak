@@ -227,4 +227,6 @@ pub enum ProtocolCall {
         /// The state ID it is tied to.
         i64,
     ),
+    /// Request the status of the worker.
+    Status(ProtocolValue),
 }

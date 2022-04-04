@@ -127,7 +127,7 @@ def reached_target():
     if command == 'next':
         return True
     if current_line > target_line or (current_line == target_line
-                                      and current_column > target_column):
+                                      and current_column >= target_column):
         # Reaching the target means either:
         # - the current line has gone past the target line, in which case our target has clearly been reached.
         # - the current line is equal to the target line, but the current column has gone past the target column.

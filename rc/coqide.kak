@@ -340,7 +340,7 @@ define-command -docstring '
 }
 
 define-command -docstring '
-
+  Process code until the position of the cursor.
 ' -params 0 coqide-move-to %{
   evaluate-commands -draft -save-regs 'abc' %{
     set-register b %val{cursor_line}

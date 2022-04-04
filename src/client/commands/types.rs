@@ -56,4 +56,8 @@ pub enum DisplayCommand {
     RemoveProcessed(Range),
     /// Go to the tip of the processed code.
     GotoTip,
+    /// Add a range to the axiom highlighter.
+    AddAxiom(Range),
+    /// Remove an axiom from the axiom highlighter.
+    RemoveAxiom(Range),
 }

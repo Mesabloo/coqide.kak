@@ -591,9 +591,21 @@ define-command -docstring '
 }
 
 define-command -docstring '
-
+  Set the error range to the given range.
 ' -hidden -params 1 coqide-set-error-range %{
   set-option buffer coqide_error_range %val{timestamp} "%arg{1}|coqide_error_face"
+}
+
+define-command -docstring '
+  Push a range to the axiom highlighter.
+' -hidden -params 1 coqide-push-axiom %{
+  set-option -add buffer coqide_admitted_range "%arg{1}|coqide_admitted_face"
+}
+
+define-command -docstring '
+  Remove an axiom range from the axiom highlighter.
+' -hidden -params 1 coqide-remove-axiom %{
+  set-option -remove buffer coqide_admitted_range "%arg{1}|coqide_admitted_face"
 }
 
 ##################################################################

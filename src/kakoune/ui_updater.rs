@@ -42,6 +42,8 @@ impl KakouneUIUpdater {
                     self.remove_to_be_processed(range).await?
                 }
                 DisplayCommand::GotoTip => self.goto_tip().await?,
+                DisplayCommand::AddAxiom(range) => self.add_axiom(range).await?,
+                DisplayCommand::RemoveAxiom(range) => self.remove_axiom(range).await?,
             }
         }
 
@@ -49,6 +51,30 @@ impl KakouneUIUpdater {
     }
 
     // ---------------------
+
+    async fn add_axiom(&mut self, range: Range) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-push-axiom "{}" }}"#,
+                edited_file(self.session.clone()),
+                range
+            ),
+        )
+        .await
+    }
+
+    async fn remove_axiom(&mut self, range: Range) -> io::Result<()> {
+        kak(
+            &session_id(self.session.clone()),
+            format!(
+                r#"evaluate-commands -buffer '{}' %{{ coqide-remove-axiom "{}" }}"#,
+                edited_file(self.session.clone()),
+                range
+            ),
+        )
+        .await
+    }
 
     async fn goto_tip(&mut self) -> io::Result<()> {
         kak(

@@ -228,8 +228,7 @@ def parse(c):
         #   in order not to forget about it and mess everything up.
         # - For any other character, simply continue as they will not impact the current state.
         if c == '*':
-            states.appendleft(
-                StateEndComment(state.at_beginning_of_coq_line))
+            states.appendleft(StateEndComment(state.at_beginning_of_coq_line))
 
     elif current_state is StateBeginComment:
         # A `(` has been seen just before, but we don't currently know if we are really starting a comment or not.
@@ -374,8 +373,11 @@ if __name__ == '__main__':
         if not must_continue:
             break
 
+    # TODO: seems to read way too much characters.
+    # Also, we might just want not to proceed further as no statement is currently finished.
     else:
-        if not any_found:
-            yield_position()
+        #     if not any_found:
+        #         yield_position()
+        pass
 
     sys.exit(0)

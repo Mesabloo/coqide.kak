@@ -96,6 +96,15 @@ impl CoqIdeTopProcessor {
                                     true,
                                 ));
                             }
+                            FeedbackContent::AddedAxiom => {
+                                let state_range = self.find_range(state_id);
+                                match state_range {
+                                    Some(range) => {
+                                        commands.push_back(DisplayCommand::AddAxiom(range))
+                                    }
+                                    None => {}
+                                }
+                            }
                             _ => {
                                 log::debug!("Received feedback object @{}: {:?}", state_id, content)
                             }
@@ -146,6 +155,7 @@ impl CoqIdeTopProcessor {
                         Some(Operation { range, .. }) => {
                             commands.push_back(DisplayCommand::RemoveProcessed(range));
                             commands.push_back(DisplayCommand::RemoveToBeProcessed(range));
+                            commands.push_back(DisplayCommand::RemoveAxiom(range));
                         }
                         _ => {}
                     }
@@ -189,6 +199,7 @@ impl CoqIdeTopProcessor {
                     for op in to_remove {
                         commands.push_back(DisplayCommand::RemoveProcessed(op.range));
                         commands.push_back(DisplayCommand::RemoveToBeProcessed(op.range));
+                        commands.push_back(DisplayCommand::RemoveAxiom(op.range));
                     }
                 }
                 (_, _) if error_state != ErrorState::Ok => {}
@@ -231,8 +242,10 @@ impl CoqIdeTopProcessor {
                 ClientCommand::Next(range, _)
                 | ClientCommand::ShowGoals(range)
                 | ClientCommand::BackTo(Operation { range, .. }) => {
-                    self.discard_states_until(safe_state_id, &mut commands)
-                        .await?;
+                    if safe_state_id > 0 {
+                        self.discard_states_until(safe_state_id, &mut commands)
+                            .await?;
+                    }
                     self.handle_error(Some(range), message, false, &mut commands)
                         .await?;
                 }
@@ -279,6 +292,7 @@ impl CoqIdeTopProcessor {
 
             commands.push_back(DisplayCommand::RemoveToBeProcessed(range));
             commands.push_back(DisplayCommand::RemoveProcessed(range));
+            commands.push_back(DisplayCommand::RemoveAxiom(range));
             commands.push_back(DisplayCommand::RefreshErrorRange(error_range));
         }
 
@@ -311,8 +325,26 @@ impl CoqIdeTopProcessor {
 
             commands.push_back(DisplayCommand::RemoveProcessed(op.range));
             commands.push_back(DisplayCommand::RemoveToBeProcessed(op.range));
+            commands.push_back(DisplayCommand::RemoveAxiom(op.range));
         }
 
         Ok(())
+    }
+
+    fn find_range(&mut self, state_id: i64) -> Option<Range> {
+        let state = self.state.read().unwrap();
+        let len = state.operations.len();
+        let mut i = 0usize;
+
+        while i < len {
+            if let Some(op) = state.operations.get(i) {
+                if op.state_id == state_id {
+                    return Some(op.range);
+                }
+            }
+            i += 1;
+        }
+
+        None
     }
 }

@@ -114,8 +114,6 @@ Here are some erroneous or incomplete features:
 - Parse a `_CoqProject` file in one of the directories containing this file (up until the root `/`).
 - `coqide-move-to` should accumulate all output in the `result` buffer.
 - Hook on `BufReload` to invalidate the complete file.
-- `..` seems to be a valid identifier inside statements.
-  But we currently get stuck on those (the first `.` is seen as the end of a statement).
 - Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

@@ -87,6 +87,14 @@ class StateBullet(State):
 
 
 @dataclass
+class StateWS(State):
+    """
+    We have encountered a whitespace, which if followed by a `.` indicates a statement end.
+    """
+    pass
+
+
+@dataclass
 class StateWSEOL(State):
     """
     We have encountered a whitespace, which if followed by a `.` indicates a statement end.
@@ -286,7 +294,7 @@ def parse(c):
 
             return parse(c)
 
-    elif current_state is StateWSEOL:
+    elif current_state is StateWS:
         # There is a whitespace right before, but we still need to decide if we are ending a
         #   statement (if it is followed by a `.`) or not.
         #
@@ -294,12 +302,23 @@ def parse(c):
         # - Otherwise, pop the state and try parsing again the current character within the old state.
         if c == '.':
             # Yay! We can finally end the current statement. We did it!
-            # Just yield the current position and start fresh.
-            if yield_position():
-                return False
+            # Unless this is the beginning of a `..`...
             states.popleft()
+            states.appendleft(StateWSEOL())
         else:
             # Ok so just ignore this garbage state, and restart parsing on the current character.
+            states.popleft()
+            return parse(c)
+
+    elif current_state is StateWSEOL:
+        # We have encountered both a whitespace and a `.`.
+        # However, if we found yet another `.`, then we are not ending a statement!
+        if c == '.':
+            states.popleft()
+        else:
+            # No `.` found, so end the current statement and start fresh if needed.
+            if yield_position():
+                return False
             states.popleft()
             return parse(c)
 
@@ -320,7 +339,7 @@ def parse(c):
         # - `"` starts a string (pushes a `StateString`).
         # - `.` jumps to a state where we want to determine if we are parsing a qualified identifier
         #   or the end of a statement.
-        # - ` `, `\t` push a new `StateWSEOL` in case we are ending a statement.
+        # - ` `, `\t` push a new `StateWS` in case we are ending a statement.
         # - Otherwise, ignore and continue not at the beginning of a line.
         if c == '(':
             states.appendleft(StateBeginComment(at_beginning_of_coq_line))
@@ -331,7 +350,7 @@ def parse(c):
         elif c == '.':
             states.appendleft(StateEOL())
         elif c.isspace():
-            states.appendleft(StateWSEOL())
+            states.appendleft(StateWS())
         else:
             at_beginning_of_coq_line = False
 

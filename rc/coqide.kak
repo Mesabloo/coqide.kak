@@ -659,6 +659,8 @@ define-command -docstring '
 ' -hidden -params 0 coqide-remove-error-range %{
   evaluate-commands %sh{
     IFS=' ,.|' read -r _ begin_line _ end_line _ _ <<< "$kak_opt_coqide_error_range"
+    begin_line=${begin_line:-1}
+    end_line=${end_line:-0}
     while [ "$begin_line" -le "$end_line" ]; do
       echo "set-option -remove buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_error_face}{\\}%opt{coqide_gutter_error_symbol}\""
       begin_line=$((begin_line + 1))
@@ -673,6 +675,8 @@ define-command -docstring '
   set-option buffer coqide_error_range %val{timestamp} "%arg{1}|coqide_error_face"
   evaluate-commands %sh{
     IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"
+    begin_line=${begin_line:-1}
+    end_line=${end_line:-0}
     while [ "$begin_line" -le "$end_line" ]; do
       echo "set-option -add buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_error_face}{\\}%opt{coqide_gutter_error_symbol}\""
       begin_line=$((begin_line + 1))
@@ -686,6 +690,8 @@ define-command -docstring '
   set-option -add buffer coqide_admitted_range "%arg{1}|coqide_admitted_face"
   evaluate-commands %sh{
     IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"
+    begin_line=${begin_line:-1}
+    end_line=${end_line:-0}
     while [ "$begin_line" -le "$end_line" ]; do
       echo "set-option -add buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_admitted_face}{\\}%opt{coqide_gutter_admitted_symbol}\""
       begin_line=$((begin_line + 1))
@@ -699,6 +705,8 @@ define-command -docstring '
   set-option -remove buffer coqide_admitted_range "%arg{1}|coqide_admitted_face"
   evaluate-commands %sh{
     IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"
+    begin_line=${begin_line:-1}
+    end_line=${end_line:-0}
     while [ "$begin_line" -le "$end_line" ]; do
       echo "set-option -remove buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_admitted_face}{\\}%opt{coqide_gutter_admitted_symbol}\""
       begin_line=$((begin_line + 1))

@@ -178,6 +178,9 @@ def parse(c):
         if c.isalpha():
             # We are parsing a qualified identifier. Don't stop there, just pop the current state.
             states.popleft()
+        elif c == '.':
+            # Wait, `..` is a valid identifier! Skip this second `.` then...
+            states.popleft()
         else:
             # Here we are, we have found a non-letter character.
             # This means that our Coq statement is finished.

@@ -185,6 +185,8 @@ define-command -docstring '
       hook -once -group coqide buffer=$kak_opt_coqide_buffer BufClose .* coqide-stop
       hook -once -group coqide buffer=$kak_opt_coqide_buffer ClientClose .* coqide-stop
       hook -once -group coqide buffer=$kak_opt_coqide_buffer KakEnd .* coqide-stop
+
+      hook -group coqide buffer=$kak_opt_coqide_buffer BufReload .* %{ coqide-invalidate-state 1 1 }
       
       hook -group coqide buffer=$kak_opt_coqide_buffer InsertChar .* coqide-on-text-change
       hook -group coqide buffer=$kak_opt_coqide_buffer InsertDelete .* coqide-on-text-change
@@ -224,6 +226,7 @@ define-command -docstring '
   }
   
   coqide-send-command 'init'
+  coqide-send-command 'status'
 }
 define-command -docstring '
   Create additional buffers for goal/result visualisation.
@@ -465,7 +468,7 @@ define-command -docstring '
   evaluate-commands -draft %{
     execute-keys "$[ $kak_main_reg_hash -eq 1 ]"
     evaluate-commands %sh{
-  range=`(tr ' ' '\n' | sed -e '$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
+      range=`(tr ' ' '\n' | sed -e '$!d' | tr '\n' ' ') <<< "$kak_opt_coqide_to_be_processed_range"`
       #                             ^^^ remove all but the last line
       IFS=' |.,' read -r _ _ eline_p ecol_p _ <<< "$range"
       eline_p=${eline_p:-1}
@@ -557,7 +560,6 @@ define-command -docstring '
   3. optional proof name
 ' -hidden -params 3 coqide-show-status %{
   echo -debug "coqide: showing status"
-  
   evaluate-commands -client "%arg{1}" %sh{
     msg="Ready"
     if [ ! -z "$2" ]; then
@@ -575,7 +577,6 @@ define-command -docstring '
 
 ' -hidden -params 2 coqide-show-version %{
   echo -debug "coqide: showing version in UI"
-
   evaluate-commands -client "%arg{1}" %{
     info -title "CoqIDE version" "%arg{2}"
   }
@@ -738,6 +739,7 @@ define-command -docstring '
   remove-highlighter buffer/coqide_processed
   remove-highlighter buffer/coqide_error
   remove-highlighter buffer/coqide_admitted
+  remove-highlighter buffer/coqide_gutter
 }
 define-command -docstring '
   Purge the remaining options which must be unset after a call to `coqide-stop`.
@@ -771,6 +773,7 @@ define-command -docstring '
   unset-option buffer coqide_processed_range
   unset-option buffer coqide_error_range
   unset-option buffer coqide_admitted_range
+  unset-option buffer coqide_gutter_symbols
 }
 
 

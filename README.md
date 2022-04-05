@@ -113,7 +113,6 @@ Here are some erroneous or incomplete features:
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
 - Parse a `_CoqProject` file in one of the directories containing this file (up until the root `/`).
 - `coqide-move-to` should accumulate all output in the `result` buffer.
-- Hook on `BufReload` to invalidate the complete file.
 - Kakoune highlighters do not seem to play well with Unicode characters in source code.
 - Multiline goals make the rule grow way too big. This is because we simply take the length of a string instead of the max length of each line.
 - Bugs are yet to be found! If you find any, please report them.

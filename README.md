@@ -46,7 +46,9 @@ plug "mesabloo/coqide.kak" do %{
 - `coqide-move-to` tries to process Coq statements until the main cursor.
 - `coqide-hints` asks the daemon for hints for the current proof.
   These may not necessarily be meaningful or useful at all, but this command is provided just in case.
-- `coqide-goto-tip` moves the cursor 
+- `coqide-goto-tip` moves the cursor to the tip.
+- `coqide-enable-gutter-symbols` enables the display of little symbols in the gutter to be more visual about errors/axioms.
+- `coqide-disable-gutter-symbols` disables the above-mentioned display of symbols in the gutter.
 
 Additional functionality:
 - This plugin will also automatically backtrack to the cursor when an insertion is detected before the end of the processed range.
@@ -58,6 +60,10 @@ This plugin comes with several default options, but some of them can be altered:
 - `coqide_command` is the command used to launch the daemon (which is written in Rust).
   Sometimes, the executable is not in your PATH, so you may want to customize this option using `set-option global coqide_command "<path to coqide-daemon>"`.
   The default value is `coqide-daemon` therefore assumes it is in your PATH.
+- `coqide_gutter_admitted_symbol` is the symbol displayed in the gutter next to any range containing an axiom.
+  This defaults to `?` but is quite ugly, so I recommend changing it.
+- `coqide_gutter_error_symbol` is the symbol output in the gutter next to an error range.
+  This defaults to `!`, but as for the precedent symbol, I recommend changing it.
 - **Colors:**
   - Ranges:
     - `coqide_processed_face` is the `face` used to highlight Coq code which has already been processed by the daemon.
@@ -87,6 +93,11 @@ This plugin comes with several default options, but some of them can be altered:
       Defaults to `variable` because I'm quite unsure what this is used for.
     - `coqide_path` ???
       Defaults to `module` for some reason.
+  - Gutter symbols:
+    - `coqide_gutter_admitted_face` is the `face` used to colorize the symbol put in the gutter when an axiom is added.
+      Defaults to `yellow` to be consistent with the default color for the admitted range.
+    - `coqide_gutter_error_face` is the `face` used to add some colors to the error symbols which is put in the gutter.
+      Defaults to `red` to be consistent with the default color for the error range.
 
 ## Things left to do and known bugs
 
@@ -99,10 +110,10 @@ Here are some erroneous or incomplete features:
   This also may happen sometimes in insert mode.
 
   A workaround for now is to backtrack by hand until before your cursor.
-- Output `Ready in ..., proving ...` in an info box at all time, in normal mode.
-  (info box is not shown, maybe due to how we connect to Kakoune)
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
 - Parse a `_CoqProject` file in one of the directories containing this file (up until the root `/`).
+- `coqide-move-to` should accumulate all output in the `result` buffer.
+- Hook on `BufReload` to invalidate the complete file.
 - Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.
@@ -160,29 +171,41 @@ plug "coqide.kak" do %{
   }
 
 
-  hook global WinSetOption filetype=coq %{
-    require-module coqide
-    coqide-start
+  hook global WinCreate .* %{
+    hook window WinSetOption filetype=coq %{
+      require-module coqide
 
-    # User mode to interact with CoqIDE only in Coq files
-    map buffer user c ": enter-user-mode coq<ret>" \
-      -docstring "enter the Coq user mode"
+      # User mode to interact with CoqIDE only in Coq files
+      map buffer user c ": enter-user-mode coq<ret>" \
+        -docstring "enter the Coq user mode"
 
-    # Better looking face
-    set-face global coqide_processed default,black+id
+      # Enable symbols in the gutter for errors/axioms
+      coqide-enable-gutter-symbols
+      # -> To disable: coqide-disable-gutter symbols
+      set-option global coqide_gutter_error_symbol "█"
+      set-option global coqide_gutter_admitted_symbol "▒"     # I quite like these ones
+      set-face global coqide_gutter_error_face red+b
+      set-face global coqide_gutter_admitted_face yellow+b
 
-    # Commands to execute when the buffer is closed.
-    # These are declared here as a string in order to have the value of `%opt{coqide_pid}`
-    # (which is an internal option)
-    set-option buffer coqide_close_panels "
-      evaluate-commands -client goal-%opt{coqide_pid} 'quit!'
-      evaluate-commands -client result-%opt{coqide_pid} 'quit!'
-      remove-hooks coqide-%opt{coqide_pid}
-    "
+      # Better looking face
+      set-face global coqide_processed_face default,black
+      set-face global coqide_error_face default,default,bright-red+c
+      set-face global coqide_admitted_face default,default,yellow+cd
+      set-face global coqide_to_be_processed_face default,default,black+u
 
-    # Remove the side panels when closing the buffer
-    hook global -group "coqide-%opt{coqide_pid}" BufClose "%val{buffile}" %{ try %opt{coqide_close_panels} }
-    hook global -group "coqide-%opt{coqide_pid}" ClientClose .* %{ try %opt{coqide_close_panels} }
+      # Commands to execute when the buffer is closed.
+      # These are declared here as a string in order to have the value of `%opt{coqide_pid}`
+      # (which is an internal option)
+      set-option buffer coqide_close_panels "
+        evaluate-commands -client goal-%opt{coqide_pid} 'quit!'
+        evaluate-commands -client result-%opt{coqide_pid} 'quit!'
+        remove-hooks coqide-%opt{coqide_pid}
+      "
+
+      # Remove the side panels when closing the buffer
+      hook global -group "coqide-%opt{coqide_pid}" BufClose "%val{buffile}" %{ try %opt{coqide_close_panels} }
+      hook global -group "coqide-%opt{coqide_pid}" ClientClose .* %{ try %opt{coqide_close_panels} }
+    }
   }
 }
 ```

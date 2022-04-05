@@ -10,7 +10,7 @@ use crate::{
     coqtop::xml_protocol::types::{ProtocolRichPP, ProtocolRichPPPart, ProtocolValue},
     files::{goal_file, result_file},
     range::Range,
-    session::{edited_file, session_id, temporary_folder, Session},
+    session::{client_name, edited_file, session_id, temporary_folder, Session},
 };
 
 use super::command_line::kak;
@@ -59,8 +59,9 @@ impl KakouneUIUpdater {
         kak(
             &session_id(self.session.clone()),
             format!(
-                r#"evaluate-commands -buffer '{}' %{{ coqide-show-status "{}" "{}" }}"#,
+                r#"evaluate-commands -buffer '{}' %{{ coqide-show-status "{}" "{}" "{}" }}"#,
                 edited_file(self.session.clone()),
+                client_name(self.session.clone()),
                 path,
                 proof_name
             ),

@@ -27,9 +27,9 @@ mod state;
 #[tokio::main]
 async fn main() {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 5 {
+    if args.len() != 6 {
         eprintln!(
-            "4 arguments needed on the command-line: <KAK_SESSION> <COQ_FILE> <TMP_DIR> <INPUT_FIFO>\n{} provided.",
+            "5 arguments needed on the command-line: <KAK_CLIENT> <KAK_SESSION> <COQ_FILE> <TMP_DIR> <INPUT_FIFO>\n{} provided.",
             args.len() - 1
         );
         exit(exitcode::CONFIG);
@@ -40,6 +40,7 @@ async fn main() {
         args[2].clone(),
         args[3].clone(),
         args[4].clone(),
+        args[5].clone(),
     );
 
     for fun in &[log_file, goal_file, result_file] {

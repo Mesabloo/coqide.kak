@@ -101,6 +101,16 @@ declare-option -docstring '
   
 ' -hidden str coqide_socket_input
 
+declare-option -docstring '
+  The list of lines where gutter symbols are supposed to appear.
+' -hidden line-specs coqide_gutter_symbols # %val{timestamp}
+declare-option -docstring '
+  The symbol displayed in the gutter when there is an error.
+' str coqide_gutter_error_symbol "!"
+declare-option -docstring '
+  The symbol displayed in the gutter everywhere an axiom is added.
+' str coqide_gutter_admitted_symbol "?"
+
 
 # The face used to highlight code which is to be processed by CoqIDE.
 # Defaults to `default,magenta`.
@@ -125,6 +135,10 @@ set-face global coqide_reference @variable
 set-face global coqide_path @module
 set-face global coqide_warning yellow+b
 set-face global coqide_error red+b
+
+# --- Faces for the gutter ---
+set-face global coqide_gutter_error_face red
+set-face global coqide_gutter_admitted_face yellow
 
 
 
@@ -160,7 +174,7 @@ define-command -docstring '
   }
 
   set-option buffer coqide_pid %sh{    
-    env RUST_BACKTRACE=1 "$kak_opt_coqide_command" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe_dir" "$kak_opt_coqide_socket_input" \
+    env RUST_BACKTRACE=1 "$kak_opt_coqide_command" "$kak_client" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe_dir" "$kak_opt_coqide_socket_input" \
     </dev/null &>"$kak_opt_coqide_log_output" &
 
     echo "$!"
@@ -186,6 +200,7 @@ define-command -docstring '
   set-option buffer coqide_processed_range %val{timestamp}
   set-option buffer coqide_error_range %val{timestamp}
   set-option buffer coqide_admitted_range %val{timestamp}
+  set-option buffer coqide_gutter_symbols %val{timestamp}
 
   set-option buffer coqide_last_checked_timestamp %val{timestamp}
 
@@ -222,7 +237,7 @@ define-command -docstring '
   
   evaluate-commands -draft %{
     edit! -scratch "%opt{coqide_goal_buffer}"
-    add-highlighter buffer/coqide_goal ranges coqide_goal_highlight
+    add-highlighter -override buffer/coqide_goal ranges coqide_goal_highlight
   }
   evaluate-commands -draft %{
     edit! -scratch "%opt{coqide_result_buffer}"
@@ -409,6 +424,24 @@ define-command -docstring '
   coqide-goto-tip
 }
 
+define-command -docstring '
+  Show the version of CoqIDE and its protocol.
+' -params 0 coqide-version %{
+  coqide-send-command "version"
+}
+
+define-command -docstring '
+  Enable displaying little icons in the gutter when there are errors or axioms.
+' -params 0 coqide-enable-gutter-symbols %{
+  add-highlighter buffer/coqide_gutter flag-lines Default coqide_gutter_symbols
+}
+
+define-command -docstring '
+  Disable displaying gutter icons.
+' -params 0 coqide-disable-gutter-symbols %{
+  remove-highlighter buffer/coqide_gutter
+}
+
 #############################################################################
 
 define-command -docstring '
@@ -519,25 +552,36 @@ define-command -docstring '
   Show the status of the `coqidetop` daemon, as `Ready in <module>, proving <name>`.
 
   Arguments:
-  1. `.`-separated module name
-  2. optional proof name
-' -hidden -params 2 coqide-show-status %{
+  1. Client name
+  2. `.`-separated module name
+  3. optional proof name
+' -hidden -params 3 coqide-show-status %{
   echo -debug "coqide: showing status"
   
-  evaluate-commands %sh{
+  evaluate-commands -client "%arg{1}" %sh{
     msg="Ready"
-    if [ ! -z "$1" ]; then
-      msg="${msg} in $1"
-      if [ ! -z "$2" ]; then
-        msg="${msg}, proving $2"
+    if [ ! -z "$2" ]; then
+      msg="${msg} in $2"
+      if [ ! -z "$3" ]; then
+        msg="${msg}, proving $3"
       fi
     fi
 
-    echo "info -markup %§{\\}${msg}§"
+    echo "echo -markup %§{Information}{\\}${msg}§"
   }
 }
 
 define-command -docstring '
+
+' -hidden -params 2 coqide-show-version %{
+  echo -debug "coqide: showing version in UI"
+
+  evaluate-commands -client "%arg{1}" %{
+    info -title "CoqIDE version" "%arg{2}"
+  }
+}
+
+    define-command -docstring '
   Pop the first range present in the range for to be processed code.
 ' -hidden -params 0 coqide-pop-to-be-processed %{
   echo -debug "coqide: removing first range from to be processed range"
@@ -613,6 +657,13 @@ define-command -docstring '
 define-command -docstring '
   Remove the current error range.
 ' -hidden -params 0 coqide-remove-error-range %{
+  evaluate-commands %sh{
+    IFS=' ,.|' read -r _ begin_line _ end_line _ _ <<< "$kak_opt_coqide_error_range"
+    while [ "$begin_line" -le "$end_line" ]; do
+      echo "set-option -remove buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_error_face}{\\}%opt{coqide_gutter_error_symbol}\""
+      begin_line=$((begin_line + 1))
+    done
+  }
   set-option buffer coqide_error_range %val{timestamp}
 }
 
@@ -620,23 +671,44 @@ define-command -docstring '
   Set the error range to the given range.
 ' -hidden -params 1 coqide-set-error-range %{
   set-option buffer coqide_error_range %val{timestamp} "%arg{1}|coqide_error_face"
+  evaluate-commands %sh{
+    IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"
+    while [ "$begin_line" -le "$end_line" ]; do
+      echo "set-option -add buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_error_face}{\\}%opt{coqide_gutter_error_symbol}\""
+      begin_line=$((begin_line + 1))
+    done
+  }
 }
 
 define-command -docstring '
   Push a range to the axiom highlighter.
 ' -hidden -params 1 coqide-push-axiom %{
   set-option -add buffer coqide_admitted_range "%arg{1}|coqide_admitted_face"
+  evaluate-commands %sh{
+    IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"
+    while [ "$begin_line" -le "$end_line" ]; do
+      echo "set-option -add buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_admitted_face}{\\}%opt{coqide_gutter_admitted_symbol}\""
+      begin_line=$((begin_line + 1))
+    done
+  }
 }
 
 define-command -docstring '
   Remove an axiom range from the axiom highlighter.
 ' -hidden -params 1 coqide-remove-axiom %{
   set-option -remove buffer coqide_admitted_range "%arg{1}|coqide_admitted_face"
+  evaluate-commands %sh{
+    IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"
+    while [ "$begin_line" -le "$end_line" ]; do
+      echo "set-option -remove buffer coqide_gutter_symbols \"$begin_line|{coqide_gutter_admitted_face}{\\}%opt{coqide_gutter_admitted_symbol}\""
+      begin_line=$((begin_line + 1))
+    done
+  }
 }
 
 ##################################################################
 
-define-command -docstring '
+  define-command -docstring '
   Quit CoqIDE.
 ' -params 0 coqide-stop %{
   evaluate-commands %sh{

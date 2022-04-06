@@ -111,10 +111,10 @@ Here are some erroneous or incomplete features:
 
   A workaround for now is to backtrack by hand until before your cursor.
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
-- Parse a `_CoqProject` file in one of the directories containing this file (up until the root `/`).
 - `coqide-move-to` should accumulate all output in the `result` buffer.
 - Kakoune highlighters do not seem to play well with Unicode characters in source code.
 - Multiline goals make the rule grow way too big. This is because we simply take the length of a string instead of the max length of each line.
+- When lines are appended to the result buffer, colors get lost.
 - Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.
@@ -132,19 +132,24 @@ plug "coqide.kak" do %{
 } config %{
   declare-option -hidden str coqide_close_panels
 
-    declare-user-mode coq
-    map global coq c ": enter-user-mode -lock coq<ret>" \
-      -docstring "stay in the Coq user mode"
-    map global coq k ": coqide-previous<ret>" \
-      -docstring "unprove the last statement"
-    map global coq j ": coqide-next<ret>" \
-      -docstring "prove the next statement"
-    map global coq <ret> ": coqide-move-to<ret>" \
-      -docstring "move tip to main cursor"
-    map global coq l ": coqide-dump-log<ret>" \
-      -docstring "dump logs"
-    map global coq q ": coqide-query<ret>" \
-      -docstring "send a query to coqtop"
+  declare-user-mode coq
+  map global coq c ": enter-user-mode -lock coq<ret>" \
+    -docstring "stay in the Coq user mode"
+  map global coq k ": coqide-previous<ret>" \
+    -docstring "unprove the last statement"
+  map global coq j ": coqide-next<ret>" \
+    -docstring "prove the next statement"
+  map global coq <ret> ": coqide-move-to<ret>" \
+    -docstring "move tip to main cursor"
+  map global coq t ": coqide-goto-tip<ret>" \
+    -docstring "go to the document tip"
+  map global coq h ": coqide-hints<ret>" \
+    -docstring "ask for some hints"
+  map global coq q ": coqide-query<ret>" \
+    -docstring "send a query to coqtop"
+  map global coq l ": coqide-dump-log<ret>" \
+    -docstring "dump logs"
+  
 
   # Create two additional clients to show goals and results
   hook global BufCreate (goal|result)-(.*) %{

@@ -7,7 +7,10 @@ use tokio::{
 use tokio_util::codec::FramedRead;
 
 use crate::{
-    coqtop::xml_protocol::{parser::xml_decoder, types::ProtocolResult},
+    coqtop::{
+        coqproject::{self, COQPROJECT},
+        xml_protocol::{parser::xml_decoder, types::ProtocolResult},
+    },
     session::{edited_file, temporary_folder, Session},
 };
 
@@ -33,8 +36,25 @@ impl CoqIdeTop {
     /// Creates a new [`COQTOP`] wrapper which allows asynchronously processing messages coming
     /// from an unbounded channel.
     pub async fn spawn(session: Arc<Session>) -> io::Result<Self> {
-        let flags = ["-topfile", &edited_file(session.clone())];
-        // TODO: add flags found in a `_CoqProject` file
+        let file = edited_file(session.clone());
+        let additional_flags = coqproject::find_and_parse_from(file.clone()).await;
+        let mut flags = vec!["-topfile".to_string(), file];
+
+        match additional_flags {
+            Ok(mut additional_flags) => {
+                if additional_flags.is_empty() {
+                    log::warn!(
+                        "No {} file found in parent directories...",
+                        coqproject::COQPROJECT
+                    );
+                }
+
+                flags.append(&mut additional_flags);
+            }
+            Err(_) => {
+                log::warn!("Malformed or not found: {}", COQPROJECT);
+            }
+        }
 
         let mut coqidetop = coqidetop(&temporary_folder(session.clone()), [0, 0], flags).await?;
 
@@ -89,16 +109,12 @@ impl CoqIdeTop {
 }
 
 /// Spawns a new [`COQTOP`] process by feeding it additional flags to take in account.
-async fn coqidetop<const N: usize>(
-    _tmp_dir: &String,
-    _ports: [u16; 2],
-    flags: [&str; N],
-) -> io::Result<Child> {
+async fn coqidetop(_tmp_dir: &String, _ports: [u16; 2], flags: Vec<String>) -> io::Result<Child> {
     Command::new(COQTOP)
         .arg("-main-channel")
         // .arg(format!("127.0.0.1:{}:{}", ports[0], ports[1]))
         .arg("stdfds")
-        .args(flags)
+        .args(&flags)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

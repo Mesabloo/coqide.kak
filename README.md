@@ -115,7 +115,10 @@ Here are some erroneous or incomplete features:
 - Kakoune highlighters do not seem to play well with Unicode characters in source code.
 - Multiline goals make the rule grow way too big. This is because we simply take the length of a string instead of the max length of each line.
 - When lines are appended to the result buffer, colors get lost.
-- Bugs are yet to be found! If you find any, please report them.
+- `coqide-makefile` to generate a `CoqMakefile` just as CoqIDE (using `coq_makefile`).
+- The whole codebase (mainly the Rust code) lacks documentation.
+  This is crucial.
+- :warning: Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.
 Just try not to implementi too many features in the same pull request (two is acceptable, if small).

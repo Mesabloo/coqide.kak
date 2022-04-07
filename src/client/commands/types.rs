@@ -38,7 +38,11 @@ pub enum ClientCommand {
 #[derive(Debug, Clone)]
 pub enum DisplayCommand {
     /// Refresh the error range.
-    RefreshErrorRange(Option<Range>),
+    RefreshErrorRange(
+        Option<Range>,
+        /// Do we force updating?
+        bool,
+    ),
     /// Output the result with colors.
     ColorResult(ProtocolRichPP, bool),
     /// Show some goals.

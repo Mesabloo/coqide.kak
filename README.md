@@ -1,6 +1,6 @@
 This plugin aims at providing a functional and usable `coqidetop` wrapper for use with Kakoune.
 
-![demo screenshot](./assets/demo2.png)
+![demo screenshot](./assets/demo3.png)
 
 For a list of things left to do, see the end of this README.
 
@@ -220,8 +220,8 @@ plug "coqide.kak" do %{
       coqide-enable-gutter-symbols
       # -> To disable: coqide-disable-gutter symbols
       set-option global coqide_gutter_error_symbol "█"
-      set-option global coqide_gutter_admitted_symbol "▒"     # I quite like these ones
-      set-face global coqide_gutter_error_face red+br
+      set-option global coqide_gutter_admitted_symbol "░"     # I quite like these ones
+      set-face global coqide_gutter_error_face red+b
       set-face global coqide_gutter_admitted_face yellow+br
 
       # Better looking face

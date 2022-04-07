@@ -236,7 +236,7 @@ impl ClientBridge {
         Ok((
             None,
             ClientCommand::IgnoreError,
-            vec![DisplayCommand::RefreshErrorRange(None)],
+            vec![DisplayCommand::RefreshErrorRange(None, true)],
         ))
     }
 

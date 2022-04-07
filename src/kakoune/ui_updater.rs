@@ -50,7 +50,9 @@ impl KakouneUIUpdater {
                 DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
                 DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
                 DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
-                DisplayCommand::RefreshErrorRange(range) if error_state == ErrorState::Ok => {
+                DisplayCommand::RefreshErrorRange(range, force)
+                    if force || error_state != ErrorState::Ok =>
+                {
                     self.refresh_error_range(range).await?
                 } // TODO: do we need to do this only if it is Ok to continue?
                 DisplayCommand::RemoveToBeProcessed(range) => {

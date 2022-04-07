@@ -159,7 +159,7 @@ impl CoqIdeTopProcessor {
                         }
                         _ => {}
                     }
-                    commands.push_back(DisplayCommand::RefreshErrorRange(None));
+                    commands.push_back(DisplayCommand::RefreshErrorRange(None, true));
                     commands.push_back(DisplayCommand::GotoTip);
 
                     log::info!("Popped last state from processed ones");
@@ -190,7 +190,7 @@ impl CoqIdeTopProcessor {
                     };
 
                     if error_state == ErrorState::Ok {
-                        commands.push_back(DisplayCommand::RefreshErrorRange(None));
+                        commands.push_back(DisplayCommand::RefreshErrorRange(None, false));
                         commands.push_back(DisplayCommand::ColorResult(
                             ProtocolRichPP::RichPP(vec![]),
                             false,
@@ -225,7 +225,7 @@ impl CoqIdeTopProcessor {
                         ProtocolRichPP::RichPP(vec![]),
                         append,
                     ));
-                    commands.push_back(DisplayCommand::RefreshErrorRange(None));
+                    commands.push_back(DisplayCommand::RefreshErrorRange(None, false));
                     commands.push_back(DisplayCommand::AddToProcessed(range));
                 }
                 (Optional(None), ClientCommand::ShowGoals(_)) => {
@@ -310,7 +310,7 @@ impl CoqIdeTopProcessor {
             commands.push_back(DisplayCommand::RemoveToBeProcessed(range));
             commands.push_back(DisplayCommand::RemoveProcessed(range));
             commands.push_back(DisplayCommand::RemoveAxiom(range));
-            commands.push_back(DisplayCommand::RefreshErrorRange(error_range));
+            commands.push_back(DisplayCommand::RefreshErrorRange(error_range, true));
         }
 
         Ok(())

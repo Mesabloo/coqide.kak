@@ -403,13 +403,34 @@ impl ProtocolRichPP {
                     use ProtocolRichPPPart::*;
 
                     match elem.name.as_str() {
-                        "constr.keyword" => elem.children[0].raw().cloned().map(Keyword),
-                        "constr.evar" => elem.children[0].raw().cloned().map(Evar),
-                        "constr.type" => elem.children[0].raw().cloned().map(Type),
-                        "constr.notation" => elem.children[0].raw().cloned().map(Notation),
-                        "constr.variable" => elem.children[0].raw().cloned().map(Variable),
-                        "constr.reference" => elem.children[0].raw().cloned().map(Reference),
-                        "constr.path" => elem.children[0].raw().cloned().map(Path),
+                        "constr.keyword" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Keyword)),
+                        "constr.evar" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Evar)),
+                        "constr.type" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Type)),
+                        "constr.notation" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Notation)),
+                        "constr.variable" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Variable)),
+                        "constr.reference" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Reference)),
+                        "constr.path" => elem
+                            .children
+                            .get(0)
+                            .and_then(|e| e.raw().cloned().map(Path)),
                         _ => None,
                     }
                 } else {

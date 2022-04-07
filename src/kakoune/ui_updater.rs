@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, io, sync::Arc};
+use std::{
+    collections::VecDeque,
+    io,
+    sync::{Arc, RwLock},
+};
 
 use tokio::{
     fs::{File, OpenOptions},
@@ -11,19 +15,22 @@ use crate::{
     files::{goal_file, result_file},
     range::Range,
     session::{client_name, edited_file, session_id, temporary_folder, Session},
+    state::{ErrorState, State},
 };
 
 use super::command_line::kak;
 
 pub struct KakouneUIUpdater {
     session: Arc<Session>,
+    state: Arc<RwLock<State>>,
     current_buffer_line: usize,
 }
 
 impl KakouneUIUpdater {
-    pub fn new(session: Arc<Session>) -> Self {
+    pub fn new(session: Arc<Session>, state: Arc<RwLock<State>>) -> Self {
         Self {
             session,
+            state,
             current_buffer_line: 1,
         }
     }
@@ -34,6 +41,8 @@ impl KakouneUIUpdater {
         while let Some(cmd) = commands.pop_front() {
             log::debug!("Received UI command {:?}", cmd);
 
+            let error_state = self.state.read().unwrap().error_state;
+
             match cmd {
                 DisplayCommand::ColorResult(richpp, append) => {
                     self.refresh_result_buffer_with(richpp, append).await?
@@ -41,7 +50,9 @@ impl KakouneUIUpdater {
                 DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
                 DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
                 DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
-                DisplayCommand::RefreshErrorRange(range) => self.refresh_error_range(range).await?,
+                DisplayCommand::RefreshErrorRange(range) if error_state == ErrorState::Ok => {
+                    self.refresh_error_range(range).await?
+                } // TODO: do we need to do this only if it is Ok to continue?
                 DisplayCommand::RemoveToBeProcessed(range) => {
                     self.remove_to_be_processed(range).await?
                 }
@@ -51,6 +62,7 @@ impl KakouneUIUpdater {
                 DisplayCommand::ShowStatus(path, proof_name) => {
                     self.show_status(path, proof_name).await?
                 }
+                _ => {}
             }
         }
 

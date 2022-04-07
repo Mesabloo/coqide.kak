@@ -666,6 +666,8 @@ define-command -docstring '
 define-command -docstring '
   Remove the current error range.
 ' -hidden -params 0 coqide-remove-error-range %{
+  echo -debug "coqide: clearing error range"
+  
   evaluate-commands %sh{
     IFS=' ,.|' read -r _ begin_line _ end_line _ _ <<< "$kak_opt_coqide_error_range"
     begin_line=${begin_line:-1}
@@ -681,6 +683,8 @@ define-command -docstring '
 define-command -docstring '
   Set the error range to the given range.
 ' -hidden -params 1 coqide-set-error-range %{
+  echo -debug "coqide: setting error range"
+  
   set-option buffer coqide_error_range %val{timestamp} "%arg{1}|coqide_error_face"
   evaluate-commands %sh{
     IFS=' ,.|' read -r begin_line _ end_line _ _ <<< "$1"

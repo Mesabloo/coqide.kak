@@ -92,7 +92,7 @@ async fn main_loop(
         state.clone(),
         client_bridge.command_tx.clone(),
     )?;
-    let mut ui_updater = KakouneUIUpdater::new(session.clone());
+    let mut ui_updater = KakouneUIUpdater::new(session.clone(), state.clone());
 
     loop {
         let cmd = client_bridge.recv(stop_rx.clone()).await?;

@@ -221,8 +221,8 @@ plug "coqide.kak" do %{
       # -> To disable: coqide-disable-gutter symbols
       set-option global coqide_gutter_error_symbol "█"
       set-option global coqide_gutter_admitted_symbol "▒"     # I quite like these ones
-      set-face global coqide_gutter_error_face red+b
-      set-face global coqide_gutter_admitted_face yellow+b
+      set-face global coqide_gutter_error_face red+br
+      set-face global coqide_gutter_admitted_face yellow+br
 
       # Better looking face
       set-face global coqide_processed_face default,black

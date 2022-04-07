@@ -142,8 +142,14 @@ fn parse_next<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
     preceded(
         pair(tag("next"), space1),
         cut(map(
-            tuple((parse_coq_statement, space0, tag("\n"))),
-            |((range, code), _, _)| Some(ClientCommand::Next(range, code)),
+            tuple((
+                parse_boolean,
+                space0,
+                parse_coq_statement,
+                space0,
+                tag("\n"),
+            )),
+            |(append, _, (range, code), _, _)| Some(ClientCommand::Next(append, range, code)),
         )),
     )(input)
 }
@@ -217,6 +223,10 @@ fn parse_string<'a>(input: Input<'a>) -> IResult<Input<'a>, String> {
         }),
         tag("\""),
     )(input)
+}
+
+fn parse_boolean<'a>(input: Input<'a>) -> IResult<Input<'a>, bool> {
+    map(alt((tag("true"), tag("false"))), |t| t == b"true")(input)
 }
 
 fn any_single<'a>(input: Input<'a>) -> IResult<Input<'a>, u8> {

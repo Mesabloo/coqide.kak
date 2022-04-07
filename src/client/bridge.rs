@@ -101,8 +101,8 @@ impl ClientBridge {
             ClientCommand::RewindTo(line, column) => self.process_rewind_to(line, column),
             ClientCommand::Query(_) => todo!(),
             ClientCommand::MoveTo(_) if error_state == ErrorState::Ok => todo!(),
-            ClientCommand::Next(range, code) if error_state == ErrorState::Ok => {
-                self.process_next(range, code)
+            ClientCommand::Next(append, range, code) if error_state == ErrorState::Ok => {
+                self.process_next(append, range, code)
             }
             ClientCommand::IgnoreError if error_state == ErrorState::Error => {
                 self.process_ignore_error()
@@ -110,9 +110,9 @@ impl ClientBridge {
             ClientCommand::Hints => todo!(),
             ClientCommand::ShowGoals(range) => self.process_show_goals(range),
             ClientCommand::BackTo(op) => self.process_back_to(op),
-            ClientCommand::Next(range, code) => Ok((
+            ClientCommand::Next(append, range, code) => Ok((
                 None,
-                ClientCommand::Next(range, code),
+                ClientCommand::Next(append, range, code),
                 vec![DisplayCommand::RemoveToBeProcessed(range)],
             )),
             ClientCommand::Status => self.process_status(),
@@ -143,6 +143,7 @@ impl ClientBridge {
 
     fn process_next(
         &mut self,
+        append: bool,
         range: Range,
         code: String,
     ) -> io::Result<(Option<ProtocolCall>, ClientCommand, Vec<DisplayCommand>)> {
@@ -150,7 +151,7 @@ impl ClientBridge {
             Some(Operation { state_id, .. }) => Some(ProtocolCall::Add(code.clone(), *state_id)),
             None => None,
         };
-        Ok((call, ClientCommand::Next(range, code), vec![]))
+        Ok((call, ClientCommand::Next(append, range, code), vec![]))
     }
 
     fn process_show_goals(

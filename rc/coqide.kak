@@ -296,7 +296,7 @@ define-command -docstring '
               echo "echo -debug %§next $range $code§"
 
               echo "coqide-push-to-be-processed '$range'"
-              echo "coqide-send-command %§next $range $code§"
+              echo "coqide-send-command %§next false $range $code§"
               echo "coqide-send-command %§show-goals $range§"
               echo "coqide-send-command 'status'"
 
@@ -410,13 +410,13 @@ define-command -docstring '
               code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")
 
               echo "coqide-push-to-be-processed '$range'"
-              echo "coqide-send-command %§next $range $code§"
+              echo "coqide-send-command %§next true $range $code§"
+              echo "coqide-send-command %§status§"
               last_range="$range"
 
               shift
             done
             echo "coqide-send-command %§show-goals ${last_range:-'1.1,1.1'}§"
-            echo "coqide-send-command 'status'"
             ;;
           (*) exit
             ;;
@@ -533,17 +533,25 @@ define-command -docstring '
 
   Arguments:
   1. `<path>`: the path to the content of the goal buffer
+  2. `<append>`: append colors to the highlighter (either a number of lines or an empty string)
   2. `<ranges>`: color ranges for the highlighter
-' -hidden -params 1.. coqide-refresh-result-buffer %{
-  echo -debug "coqide: refreshing result buffer"
+' -hidden -params 2.. coqide-refresh-result-buffer %{
+  echo -debug "coqide: refreshing result buffer (%arg{@})"
+
   evaluate-commands -buffer "%opt{coqide_result_buffer}" %{
-    execute-keys "%%|cat<space>%arg{1}<ret>"
     evaluate-commands %sh{
-      if [ "$#" -eq 1 -o -z "$2" ]; then
-        echo "set-option buffer coqide_result_highlight %val{timestamp}"
+      append="$2"
+      echo "execute-keys '%d!cat $1<ret>'"
+      if [ -z "$append" ]; then
+        if [ "$#" -eq 2 -o -z "$3" ]; then
+          echo "set-option buffer coqide_result_highlight %val{timestamp}"
+        else
+          shift 2
+          echo "set-option buffer coqide_result_highlight %val{timestamp}" "$@"
+        fi
       else
-        shift
-        echo "set-option buffer coqide_result_highlight %val{timestamp}" "$@"
+        shift 2
+        echo "set-option -add buffer coqide_result_highlight" "$@"
       fi
     }
   }

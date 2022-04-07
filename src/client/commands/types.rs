@@ -21,7 +21,7 @@ pub enum ClientCommand {
     /// Process all the given statements (which correspond to until where the cursor is).
     MoveTo(Vec<(Range, String)>),
     /// Try to process the next statement.
-    Next(Range, String),
+    Next(bool, Range, String),
     /// Allow bypassing the last error range reported, without removing it from the UI.
     IgnoreError,
     /// Ask for hints for the current proof.

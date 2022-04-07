@@ -17,11 +17,15 @@ use super::command_line::kak;
 
 pub struct KakouneUIUpdater {
     session: Arc<Session>,
+    current_buffer_line: usize,
 }
 
 impl KakouneUIUpdater {
     pub fn new(session: Arc<Session>) -> Self {
-        Self { session }
+        Self {
+            session,
+            current_buffer_line: 1,
+        }
     }
 
     pub async fn process(&mut self, mut commands: VecDeque<DisplayCommand>) -> io::Result<()> {
@@ -166,28 +170,40 @@ impl KakouneUIUpdater {
     ) -> io::Result<()> {
         let result_buffer = result_file(&temporary_folder(self.session.clone()));
 
-        let (mut content, colors) = extract_colors(richpp, 1usize, 1usize);
+        let (added_lines, colors) = {
+            let mut file = if !append {
+                self.current_buffer_line = 1;
+                File::create(&result_buffer).await?
+            } else {
+                OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&result_buffer)
+                    .await?
+            };
 
-        let mut file = if content.is_empty() || !append {
-            File::create(&result_buffer).await?
-        } else {
-            OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(&result_buffer)
-                .await?
+            let (mut content, colors) = extract_colors(richpp, self.current_buffer_line, 1usize);
+
+            let mut added_lines = 0;
+            if !content.is_empty() {
+                content += "\n";
+                added_lines = content.matches("\n").count();
+                self.current_buffer_line += added_lines;
+                file.write_all(content.as_bytes()).await?;
+                file.flush().await?;
+            }
+            file.shutdown().await?;
+
+            (added_lines, colors)
         };
 
-        if !content.is_empty() {
-            content += "\n";
-            file.write_all(content.as_bytes()).await?;
-        }
         kak(
             &session_id(self.session.clone()),
             format!(
-                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" "{2}" }}"#,
+                r#"evaluate-commands -buffer '{0}' %{{ coqide-refresh-result-buffer "{1}" "{2}" "{3}" }}"#,
                 edited_file(self.session.clone()),
                 result_buffer,
+                if append { format!("{}", added_lines) } else { "".to_string() },
                 colors.join("\" \"")
             ),
         )
@@ -322,7 +338,7 @@ fn extract_colors(
                         begin_line as u64,
                         begin_column as u64,
                         current_line as u64,
-                        current_column as u64
+                        (current_column - 1) as u64
                     ),
                     color_name,
                 ))

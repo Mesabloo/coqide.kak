@@ -91,7 +91,7 @@ impl CoqIdeTopProcessor {
                                         Reference(name),
                                         Raw("\" (".to_string()),
                                         Path(path),
-                                        Raw(") imported.\n".to_string()),
+                                        Raw(") imported.".to_string()),
                                     ]),
                                     true,
                                 ));
@@ -205,7 +205,7 @@ impl CoqIdeTopProcessor {
                 (_, _) if error_state != ErrorState::Ok => {}
                 (
                     Pair(box StateId(state_id), box Pair(box union, _)),
-                    ClientCommand::Next(range, _),
+                    ClientCommand::Next(append, range, _),
                 ) => {
                     let new_state_id = match union {
                         Inl(box Unit) => state_id,
@@ -223,7 +223,7 @@ impl CoqIdeTopProcessor {
 
                     commands.push_back(DisplayCommand::ColorResult(
                         ProtocolRichPP::RichPP(vec![]),
-                        false,
+                        append,
                     ));
                     commands.push_back(DisplayCommand::RefreshErrorRange(None));
                     commands.push_back(DisplayCommand::AddToProcessed(range));
@@ -256,7 +256,7 @@ impl CoqIdeTopProcessor {
             ProtocolResult::Fail(_, _, StateId(safe_state_id), message) => match command {
                 ClientCommand::Init => todo!(),
                 ClientCommand::Query(_) => todo!(),
-                ClientCommand::Next(range, _)
+                ClientCommand::Next(_, range, _)
                 | ClientCommand::ShowGoals(range)
                 | ClientCommand::BackTo(Operation { range, .. }) => {
                     if safe_state_id > 0 {

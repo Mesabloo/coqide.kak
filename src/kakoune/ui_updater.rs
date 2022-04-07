@@ -182,7 +182,8 @@ impl KakouneUIUpdater {
                     .await?
             };
 
-            let (mut content, colors) = extract_colors(richpp, self.current_buffer_line, 1usize);
+            let (mut content, colors) =
+                extract_colors(richpp, self.current_buffer_line, 1usize, true);
 
             let mut added_lines = 0;
             if !content.is_empty() {
@@ -285,6 +286,7 @@ fn extract_colors(
     richpp: ProtocolRichPP,
     starting_line: usize,
     starting_column: usize,
+    align: bool,
 ) -> (String, Vec<String>) {
     let ProtocolRichPP::RichPP(parts) = richpp;
     let mut message = String::new();
@@ -300,12 +302,15 @@ fn extract_colors(
                 for c in txt.chars() {
                     if c == '\n' {
                         current_line += 1;
-                        current_column = 1;
+                        current_column = if align { starting_column } else { 1 };
                     } else {
                         current_column += 1;
                     }
                 }
-                message += txt.as_str();
+
+                let tmp = format!("\n{}", " ".repeat(starting_column - 1));
+                message += txt.replace("\n", tmp.as_str()).as_str();
+
                 None
             }
             // NOTE: there should be no \n in any of those remaining
@@ -324,13 +329,14 @@ fn extract_colors(
                 for c in txt.chars() {
                     if c == '\n' {
                         current_line += 1;
-                        current_column = 1;
+                        current_column = if align { starting_column } else { 1 };
                     } else {
                         current_column += 1;
                     }
                 }
 
-                message += txt.as_str();
+                let tmp = format!("\n{}", " ".repeat(starting_column - 1));
+                message += txt.replace("\n", tmp.as_str()).as_str();
 
                 Some(format!(
                     "{}|coqide_{}",
@@ -379,7 +385,7 @@ fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>,
         let mut max_size = 0usize;
 
         for hyp in hyps {
-            let (msg, mut cols) = extract_colors(hyp, line, 2usize);
+            let (msg, mut cols) = extract_colors(hyp, line, 2usize, true);
             line += 1;
 
             max_size = max_size.max(msg.len() + 2);
@@ -391,9 +397,9 @@ fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>,
             };
             colors.append(&mut cols);
         }
-        let (msg, mut cols) = extract_colors(ccl, line + 1, 2usize);
+        let (msg, mut cols) = extract_colors(ccl, line + 1, 2usize, true);
 
-        max_size = max_size.max(msg.len() + 2);
+        max_size = max_size.max(msg.lines().map(|l| l.len()).max().unwrap_or(0) + 2);
         let middle_line = "─".repeat(max_size);
         message = if message.is_empty() {
             line += 2;

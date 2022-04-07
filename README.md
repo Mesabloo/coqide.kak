@@ -12,16 +12,28 @@ I wanted to maintain a fork on my own, but most of the extension is written in s
 
 I chose to write the “backend” in Rust, mainly to discover, and because I felt like it was more suited for this than Haskell.
 
+## Features
+
+TODO
+
 ## Dependencies
 
-- coqidetop (should come with a Coq installation by default)
+Compile-time:
+- A Rust installation with `cargo`, to build the daemon
+Runtime:
+- coqidetop (should come with a Coq installation by default -- only tested for 0.13.2)
 - [socat](https://linux.die.net/man/1/socat)
 - Python 3.8+
 
 ## Installation
 
-The recommended way to install this plugin is through [plug.kak](https://github.com/andreyorst/plug.kak):
-```sh
+The recommended way to install this plugin is using [plug.kak](https://github.com/andreyorst/plug.kak), though other means are also available.
+
+### With plug.kak
+
+Put this in your `kakrc` file.
+
+```kak
 plug "mesabloo/coqide.kak" do %{
   cargo build --release --locked
   cargo install --force --path . --root ~/.local
@@ -29,6 +41,24 @@ plug "mesabloo/coqide.kak" do %{
   # configure this plugin here
 }
 ```
+
+After that, run `:plug-install` from within Kakoune and everything should be correctly installed.
+Note that if `~/.local/bin` is not in your PATH, you will need to edit the option `coqide_command`, by putting this in the `config` block above:
+
+```kak
+set-option global coqide_command "~/.local/bin/coqide-daemon"
+```
+
+### Using autoload
+
+Clone this repository to your `autoload` directory.
+Note that you will need to manually build the daemon using the two above commands.
+Further configuration is done within your `kakrc` file.
+
+### Manual installation
+
+Clone this repository somewhere and `source` the file `rc/coqide.kak` in your `kakrc`.
+The rest of the procedure is already described above.
 
 ## Public API
 

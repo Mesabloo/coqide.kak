@@ -111,7 +111,6 @@ Here are some erroneous or incomplete features:
 
   A workaround for now is to backtrack by hand until before your cursor.
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
-- `coqide-move-to` should accumulate all output in the `result` buffer.
 - Kakoune highlighters do not seem to play well with Unicode characters in source code.
 - Multiline goals make the rule grow way too big. This is because we simply take the length of a string instead of the max length of each line.
 - When lines are appended to the result buffer, colors get lost.

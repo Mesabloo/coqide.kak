@@ -402,7 +402,7 @@ fn goal_to_string(goal: ProtocolValue, mut line: usize) -> (String, Vec<String>,
             let (msg, mut cols) = extract_colors(hyp, line, 2usize, true);
             line += 1;
 
-            max_size = max_size.max(msg.len() + 2);
+            max_size = max_size.max(msg.lines().map(|l| l.len()).max().unwrap_or(0) + 2);
 
             message = if message.is_empty() {
                 format!(" {} ", msg)

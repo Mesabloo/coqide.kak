@@ -142,6 +142,8 @@ Here are some erroneous or incomplete features:
   A workaround for now is to backtrack by hand until before your cursor.
 - Create a `coqide-version` which returns the version of Coq and the XML protocol.
 - Kakoune highlighters do not seem to play well with Unicode characters in source code.
+- The goal buffer sometimes displays rules with invalid UTF8 characters.
+- Multiline hypotheses in a goal break highlighting completely.
 - When lines are appended to the result buffer, colors get lost.
 - `coqide-makefile` to generate a `CoqMakefile` just as CoqIDE (using `coq_makefile`).
 - The whole codebase (mainly the Rust code) lacks documentation.

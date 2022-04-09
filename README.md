@@ -20,6 +20,7 @@ TODO
 
 Compile-time:
 - A Rust installation with `cargo`, to build the daemon
+
 Runtime:
 - coqidetop (should come with a Coq installation by default -- only tested for 0.13.2)
 - [socat](https://linux.die.net/man/1/socat)
@@ -191,7 +192,6 @@ plug "coqide.kak" do %{
   hook global BufCreate (goal|result)-(.*) %{
     evaluate-commands %sh{
       client_name="${kak_hook_param_capture_1}-${kak_hook_param_capture_2}"
-      regex_safe="$(sed 's/\*/\\*/g' <<< "$kak_hook_param_capture_0")"
 
       switch_to_buffer="
         buffer $kak_hook_param_capture_0
@@ -204,9 +204,9 @@ plug "coqide.kak" do %{
           remove-highlighter buffer/show-whitespaces
         }
       "
-      ${kak_opt_termcmd} "kak -c $kak_session -e '$switch_to_buffer'" &>/dev/null </dev/null &
-
-      echo "hook -once global BufClose '$regex_safe' %{
+      
+      echo "new '$switch_to_buffer'"
+      echo "hook -once global BufClose '$kak_hook_param_capture_0' %{
         evaluate-commands -client '$client_name' 'quit!'
       }"
     }

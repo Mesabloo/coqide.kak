@@ -46,10 +46,10 @@ plug "mesabloo/coqide.kak" do %{
 ```
 
 After that, run `:plug-install` from within Kakoune and everything should be correctly installed.
-Note that if `~/.local/bin` is not in your PATH, you will need to edit the option `coqide_command`, by putting this in the `config` block above:
+Note that if `~/.local/bin` is not in your PATH, you will need to edit the option `coqide_tools_folder`, by putting this in the `config` block above:
 
 ```kak
-set-option global coqide_command "~/.local/bin/coqide-daemon"
+set-option global coqide_tools_folder "~/.local/bin"
 ```
 
 ### Using autoload

@@ -1,6 +1,6 @@
 This plugin aims at providing a functional and usable `coqidetop` wrapper for use with Kakoune.
 
-![demo screenshot](./assets/demo3.png)
+![demo screenshot](./assets/demo4.png)
 
 For a list of things left to do, see the end of this README.
 
@@ -57,7 +57,7 @@ Further configuration is done within your `kakrc` file.
 
 ### Manual installation
 
-Clone this repository somewhere and `source` the file `rc/coqide.kak` in your `kakrc`.
+Clone this repository somewhere and `source` the files `rc/coqide.kak` and `rc/syntax.kak` (better syntax highlighting) in your `kakrc`.
 The rest of the procedure is already described above.
 
 ## Public API

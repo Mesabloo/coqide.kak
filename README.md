@@ -24,7 +24,6 @@ Compile-time:
 Runtime:
 - coqidetop (should come with a Coq installation by default -- only tested for 0.13.2)
 - [socat](https://linux.die.net/man/1/socat)
-- Python 3.8+
 
 > :warning: Will not work for Coq versions 0.14.+, as the XML protocol has changed.
 > This is something that should be handled dynamically through a call to the `Version` call at initialisation time.
@@ -91,9 +90,15 @@ Additional functionality:
 
 This plugin comes with several default options, but some of them can be altered:
 
-- `coqide_command` is the command used to launch the daemon (which is written in Rust).
-  Sometimes, the executable is not in your PATH, so you may want to customize this option using `set-option global coqide_command "<path to coqide-daemon>"`.
-  The default value is `coqide-daemon` therefore assumes it is in your PATH.
+- `coqide_tools_folder` is the folder containing all the required tools written in Rust for this plugin to work.
+  This may be left blank, which means that the executables must be in your PATH.
+
+  The indicated folder must contain the executables:
+  - `coqide-daemon`: the daemon to serve as a bridge between Kakoune and CoqIDE
+  - `coq-parser`: the small tool used to get statement boundaries in the rest of the buffer.
+
+  The default value for this option is the empty string `""`.
+  A sane value could be `~/.local/bin`, as found in my example configuration.
 - `coqide_gutter_admitted_symbol` is the symbol displayed in the gutter next to any range containing an axiom.
   This defaults to `?` but is quite ugly, so I recommend changing it.
 - `coqide_gutter_error_symbol` is the symbol output in the gutter next to an error range.
@@ -153,8 +158,6 @@ Here are some erroneous or incomplete features:
 - The whole codebase (mainly the Rust code) lacks documentation.
   This is crucial.
 - We need a way to interrupt the processing of a Coq statement if it takes too long.
-- When adding multiple statements, the parser seems to take quite a long time.
-  Not sure if this is caused by the code directly, or the whole bash loop on the Kakoune side.
 - :warning: Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

@@ -82,11 +82,13 @@ declare-option -docstring '
 ' -hidden str coqide_log_buffer 
 
 declare-option -docstring '
-  The command use to start the CoqIDE daemon.
+  The folder containing all the tools coming with this plugin.
+  An empty value means it must be in your PATH.
 
-  This can be customised to suite multiple systems, and defaults to `coqide-daemon`, which
-  assumes that the executable is in your PATH.
-' str coqide_command "coqide-daemon"
+  It should include:
+  - `coqide-daemon`, the daemon used to communicate with `coqidetop`.
+  - `coq-parser`, which is used to find bounds of Coq statements.
+' str coqide_tools_folder ""
 
 declare-option -docstring '
   The directory containing all temporary files such as control pipes.
@@ -167,14 +169,14 @@ define-command -docstring '
   }
 
   evaluate-commands %sh{
-    if ! type "$kak_opt_coqide_command" &>/dev/null; then
+    if ! type "${kak_opt_coqide_tools_folder:+$kak_opt_coqide_tools_folder/}coqide-daemon" &>/dev/null; then
       echo "fail 'coqide: cannot execute \"$kak_opt_coqide_command\": no such executable file'"
       exit
     fi
   }
 
   set-option buffer coqide_pid %sh{    
-    env RUST_BACKTRACE=1 "$kak_opt_coqide_command" "$kak_client" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe_dir" "$kak_opt_coqide_socket_input" \
+    env RUST_BACKTRACE=1 "${kak_opt_coqide_tools_folder:+$kak_opt_coqide_tools_folder/}coqide-daemon" "$kak_client" "$kak_session" "$kak_opt_coqide_buffer" "$kak_opt_coqide_pipe_dir" "$kak_opt_coqide_socket_input" \
     </dev/null &>"$kak_opt_coqide_log_output" &
 
     echo "$!"
@@ -288,7 +290,7 @@ define-command -docstring '
       case $kak_selection in
         (*[![:space:]]*)
             IFS=$'\n'
-            set -- $(python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column next <<< "$kak_selection")
+            set -- $(${kak_opt_coqide_tools_folder:+$kak_opt_coqide_tools_folder/}coq-parser $kak_cursor_line $kak_cursor_column next <<< "$kak_selection")
             while [ $# -gt 0 ]; do
               range="${1%% *}"
               code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")
@@ -404,7 +406,7 @@ define-command -docstring '
           (*[![:space:]]*)
             last_range=
             IFS=$'\n'
-            set -- $(python3 $kak_opt_coqide_source/parse_coq.py $kak_cursor_line $kak_cursor_column to $kak_reg_b $kak_reg_c <<< "$kak_selection")
+            set -- $(${kak_opt_coqide_tools_folder:+$kak_opt_coqide_tools_folder/}coq-parser $kak_cursor_line $kak_cursor_column to $kak_reg_b $kak_reg_c <<< "$kak_selection")
             while [ $# -gt 0 ]; do
               range="${1%% *}"
               code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")

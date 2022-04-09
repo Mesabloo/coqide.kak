@@ -26,6 +26,9 @@ Runtime:
 - [socat](https://linux.die.net/man/1/socat)
 - Python 3.8+
 
+> :warning: Will not work for Coq versions 0.14.+, as the XML protocol has changed.
+> This is something that should be handled dynamically through a call to the `Version` call at initialisation time.
+
 ## Installation
 
 The recommended way to install this plugin is using [plug.kak](https://github.com/andreyorst/plug.kak), though other means are also available.

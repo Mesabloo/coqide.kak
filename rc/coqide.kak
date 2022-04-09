@@ -683,7 +683,7 @@ define-command -docstring '
 define-command -docstring '
   Set the error range to the given range.
 ' -hidden -params 1 coqide-set-error-range %{
-  echo -debug "coqide: setting error range"
+  echo -debug "coqide: setting error range to %arg{1}"
   
   set-option buffer coqide_error_range %val{timestamp} "%arg{1}|coqide_error_face"
   evaluate-commands %sh{

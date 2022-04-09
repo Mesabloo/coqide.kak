@@ -7,22 +7,15 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use client::bridge::ClientBridge;
-use coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor};
-use files::{goal_file, log_file, result_file};
-use kakoune::{command_line::kak, ui_updater::KakouneUIUpdater};
-use session::{edited_file, session_id, temporary_folder, Session};
-use state::State;
-use tokio::{fs::File, sync::watch};
+use daemon::client::bridge::ClientBridge;
+use daemon::coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor};
+use daemon::files::{goal_file, log_file, result_file};
+use daemon::kakoune::{command_line::kak, ui_updater::KakouneUIUpdater};
+use daemon::logger;
+use daemon::session::{edited_file, session_id, temporary_folder, Session};
+use daemon::state::State;
 
-mod client;
-mod coqtop;
-mod files;
-mod kakoune;
-mod logger;
-mod range;
-mod session;
-mod state;
+use tokio::{fs::File, sync::watch};
 
 #[tokio::main]
 async fn main() {

@@ -487,10 +487,10 @@ define-command -docstring '
       sline=${sline:-1}
       scol=${scol:-1}
 
-      if [ $sline -lt $eline_e ] || [ $sline -eq $eline_e -a $scol -lt $ecol_e ]; then
+      if [ $sline -lt $eline_e ] || [ $sline -eq $eline_e -a $scol -le $ecol_e ]; then
         echo "coqide-invalidate-error"
       fi
-      if [ $sline -lt $eline_p ] || [ $sline -eq $eline_p -a $scol -lt $ecol_p ]; then
+      if [ $sline -lt $eline_p ] || [ $sline -eq $eline_p -a $scol -le $ecol_p ]; then
         echo "coqide-invalidate-state $sline $scol"
       fi 
     }

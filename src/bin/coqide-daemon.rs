@@ -78,7 +78,7 @@ async fn main_loop(
     let state = Arc::new(RwLock::new(State::new()));
 
     let mut client_bridge =
-        ClientBridge::new::<100>(session.clone(), state.clone(), stop_tx).await?;
+        ClientBridge::new::<10000>(session.clone(), state.clone(), stop_tx).await?;
     let mut coqtop_bridge = CoqIdeTop::spawn(session.clone()).await?;
     let mut coqtop_processor = CoqIdeTopProcessor::new(
         session.clone(),

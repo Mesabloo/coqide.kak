@@ -407,18 +407,19 @@ define-command -docstring '
             last_range=
             IFS=$'\n'
             set -- $(${kak_opt_coqide_tools_folder:+$kak_opt_coqide_tools_folder/}coq-parser $kak_cursor_line $kak_cursor_column to $kak_reg_b $kak_reg_c <<< "$kak_selection")
+
+            cmd="coqide-send-command %§move-to "
             while [ $# -gt 0 ]; do
               range="${1%% *}"
               code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")
+              cmd="${cmd} $range $code"
 
               echo "coqide-push-to-be-processed '$range'"
-              echo "coqide-send-command %§next true $range $code§"
-              echo "coqide-send-command %§status§"
-              last_range="$range"
 
               shift
             done
-            echo "coqide-send-command %§show-goals ${last_range:-'1.1,1.1'}§"
+            echo "${cmd}§"
+            echo "coqide-send-command %§status§"
             ;;
           (*) exit
             ;;

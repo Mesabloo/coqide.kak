@@ -100,7 +100,9 @@ impl ClientBridge {
             ClientCommand::Previous => self.process_previous(),
             ClientCommand::RewindTo(line, column) => self.process_rewind_to(line, column),
             ClientCommand::Query(_) => todo!(),
-            ClientCommand::MoveTo(_) if error_state == ErrorState::Ok => todo!(),
+            ClientCommand::MoveTo(ranges) if error_state == ErrorState::Ok => {
+                self.process_move_to(ranges)
+            }
             ClientCommand::Next(append, range, code) if error_state == ErrorState::Ok => {
                 self.process_next(append, range, code)
             }
@@ -248,5 +250,18 @@ impl ClientBridge {
             ClientCommand::Status,
             vec![],
         ))
+    }
+
+    fn process_move_to(
+        &mut self,
+        ranges: Vec<(Range, String)>,
+    ) -> io::Result<(Option<ProtocolCall>, ClientCommand, Vec<DisplayCommand>)> {
+        for (range, code) in ranges.iter() {
+            self.command_tx
+                .send(ClientCommand::Next(true, range.clone(), code.clone()))
+                .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+        }
+
+        Ok((None, ClientCommand::MoveTo(ranges), vec![]))
     }
 }

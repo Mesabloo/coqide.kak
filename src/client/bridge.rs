@@ -256,10 +256,16 @@ impl ClientBridge {
         &mut self,
         ranges: Vec<(Range, String)>,
     ) -> io::Result<(Option<ProtocolCall>, ClientCommand, Vec<DisplayCommand>)> {
+        let mut should_append = false;
         for (range, code) in ranges.iter() {
             self.command_tx
-                .send(ClientCommand::Next(true, range.clone(), code.clone()))
+                .send(ClientCommand::Next(
+                    should_append,
+                    range.clone(),
+                    code.clone(),
+                ))
                 .map_err(|err| io::Error::new(io::ErrorKind::BrokenPipe, err))?;
+            should_append = true;
         }
 
         Ok((None, ClientCommand::MoveTo(ranges), vec![]))

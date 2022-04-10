@@ -414,12 +414,14 @@ define-command -docstring '
               code=$(sed -e "s/\\\\n/\n/g" <<< "${1#* }")
               cmd="${cmd} $range $code"
 
+              last_range="$range"
               echo "coqide-push-to-be-processed '$range'"
 
               shift
             done
             echo "${cmd}§"
             echo "coqide-send-command %§status§"
+            echo "coqide-send-command %§show-goals ${last_range:-1.1,1.1}§"
             ;;
           (*) exit
             ;;

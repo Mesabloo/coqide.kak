@@ -246,9 +246,10 @@ impl KakouneUIUpdater {
             if bg.is_empty() || bg.iter().all(|(lg, rg)| lg.is_empty() && rg.is_empty()) {
                 if gg.is_empty() {
                     if sg.is_empty() {
-                        message = "No more subgoals.".to_string();
+                        message = "There are no more subgoals.\nProof is complete.".to_string();
                     } else {
-                        message = "No more subgoals, but some goals remain sheleved:\n".to_string();
+                        message = "There are no more subgoals, but some goals remain sheleved:\n"
+                            .to_string();
                         let mut line = 3usize;
                         for goal in sg.into_iter() {
                             let (txt, mut cols, i) = goal_to_string(goal, line);
@@ -258,7 +259,8 @@ impl KakouneUIUpdater {
                         }
                     }
                 } else {
-                    message = "No more subgoals, but there are some given up goals:\n".to_string();
+                    message = "There are no more subgoals, but there are some given up goals:\n"
+                        .to_string();
                     let mut line = 3usize;
                     for goal in gg.into_iter() {
                         let (txt, mut cols, i) = goal_to_string(goal, line);

@@ -248,7 +248,7 @@ impl KakouneUIUpdater {
                     if sg.is_empty() {
                         message = "There are no more subgoals.\nProof is complete.".to_string();
                     } else {
-                        message = "There are no more subgoals, but some goals remain sheleved:\n"
+                        message = "There are no more subgoals, but some goals remain shelved:\n"
                             .to_string();
                         let mut line = 3usize;
                         for goal in sg.into_iter() {

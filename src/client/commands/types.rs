@@ -53,6 +53,8 @@ pub enum DisplayCommand {
         Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
         /// Given up goals.
         Vec<ProtocolValue>,
+        /// Shelved goals (e.g. uninstanciated existentials)
+        Vec<ProtocolValue>,
     ),
     /// Remove a range from the to be processed range.
     RemoveToBeProcessed(Range),

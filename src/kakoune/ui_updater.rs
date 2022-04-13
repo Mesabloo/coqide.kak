@@ -48,7 +48,9 @@ impl KakouneUIUpdater {
                     self.refresh_result_buffer_with(richpp, append).await?
                 }
                 DisplayCommand::AddToProcessed(range) => self.add_to_processed(range).await?,
-                DisplayCommand::OutputGoals(fg, bg, gg) => self.output_goals(fg, bg, gg).await?,
+                DisplayCommand::OutputGoals(fg, bg, gg, sg) => {
+                    self.output_goals(fg, bg, gg, sg).await?
+                }
                 DisplayCommand::RemoveProcessed(range) => self.remove_processed(range).await?,
                 DisplayCommand::RefreshErrorRange(range, force)
                     if force || error_state != ErrorState::Ok =>
@@ -233,6 +235,7 @@ impl KakouneUIUpdater {
         fg: Vec<ProtocolValue>,
         bg: Vec<(Vec<ProtocolValue>, Vec<ProtocolValue>)>,
         gg: Vec<ProtocolValue>,
+        sg: Vec<ProtocolValue>,
     ) -> io::Result<()> {
         let goal_buffer = goal_file(&temporary_folder(self.session.clone()));
 
@@ -242,7 +245,18 @@ impl KakouneUIUpdater {
         if fg.is_empty() {
             if bg.is_empty() || bg.iter().all(|(lg, rg)| lg.is_empty() && rg.is_empty()) {
                 if gg.is_empty() {
-                    message = "No more subgoals.".to_string();
+                    if sg.is_empty() {
+                        message = "No more subgoals.".to_string();
+                    } else {
+                        message = "No more subgoals, but some goals remain sheleved:\n".to_string();
+                        let mut line = 3usize;
+                        for goal in sg.into_iter() {
+                            let (txt, mut cols, i) = goal_to_string(goal, line);
+                            message = format!("{}\n{}", message, txt);
+                            colors.append(&mut cols);
+                            line = i + 1;
+                        }
+                    }
                 } else {
                     message = "No more subgoals, but there are some given up goals:\n".to_string();
                     let mut line = 3usize;

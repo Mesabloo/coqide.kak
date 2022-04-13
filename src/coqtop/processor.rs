@@ -229,10 +229,10 @@ impl CoqIdeTopProcessor {
                     commands.push_back(DisplayCommand::AddToProcessed(range));
                 }
                 (Optional(None), ClientCommand::ShowGoals(_)) => {
-                    commands.push_back(DisplayCommand::OutputGoals(vec![], vec![], vec![]));
+                    commands.push_back(DisplayCommand::OutputGoals(vec![], vec![], vec![], vec![]));
                 }
-                (Optional(Some(box Goals(fg, bg, _, gg))), ClientCommand::ShowGoals(_)) => {
-                    commands.push_back(DisplayCommand::OutputGoals(fg, bg, gg));
+                (Optional(Some(box Goals(fg, bg, sg, gg))), ClientCommand::ShowGoals(_)) => {
+                    commands.push_back(DisplayCommand::OutputGoals(fg, bg, gg, sg));
                 }
                 (Status(box List(path), box Optional(proof), _, _), ClientCommand::Status) => {
                     let path = path

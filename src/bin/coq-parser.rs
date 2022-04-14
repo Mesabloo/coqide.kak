@@ -6,10 +6,9 @@ use std::{
     process,
 };
 
-/// Coq's bullet styles
+/// Coq's bullet styles.
 ///
-/// `{` and `}` are not supported because it would lead to ambiguities with implicit arguments.
-/// If you are using those bullet styles, I am sorry but this isn't supported.
+/// `{` and `}` are not in there because they do not stack (meaning `{{` is considered two different bullets).
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 enum BulletStyle {
     /// `+`
@@ -339,6 +338,7 @@ fn parse(c: char, st: &mut GlobalState) -> bool {
             //
             // - `(` pushes a transition state to determine whether we are starting a comment or not.
             // - `*`, `-` and `+` all start new bullets.
+            // - `{` and `}` start non-stackeable bullets.
             // - `"` is the entry point of the string state.
             // - `.` jumps to a transition state to check if we found the identifier `..`, a qualified
             //   identifier or the end of a Coq statement.
@@ -352,6 +352,11 @@ fn parse(c: char, st: &mut GlobalState) -> bool {
                 }),
                 '"' => st.push_state(MachineState::InString),
                 '.' => st.push_state(MachineState::AtEOL),
+                '{' | '}' if st.at_beginning_of_coq_line => {
+                    if yield_position(st) {
+                        return false;
+                    }
+                }
                 c if c.is_whitespace() => st.push_state(MachineState::AfterWhitespace),
                 c => match BulletStyle::from_char(c) {
                     Some(style) if st.at_beginning_of_coq_line => {

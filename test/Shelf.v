@@ -5,5 +5,5 @@ Proof.
   eexists _, 0.
   lia.
   Unshelve.
-  all: admit.
-Admitted.
+  exact 5.
+Qed.

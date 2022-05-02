@@ -85,6 +85,7 @@ fn parse_command<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
         parse_previous,
         parse_hints,
         parse_ignore_error,
+        parse_stop_interrupt,
         parse_next,
         parse_rewind_to,
         parse_move_to,
@@ -192,6 +193,13 @@ fn parse_status<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
     preceded(
         pair(tag("status"), space0),
         cut(value(Some(ClientCommand::Status), tag("\n"))),
+    )(input)
+}
+
+fn parse_stop_interrupt<'a>(input: Input<'a>) -> IResult<Input<'a>, Output> {
+    preceded(
+        pair(tag("stop-interrupt"), space0),
+        cut(value(Some(ClientCommand::StopInterrupt), tag("\n"))),
     )(input)
 }
 

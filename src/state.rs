@@ -21,6 +21,7 @@ impl Default for Operation {
 pub enum ErrorState {
     Ok,
     Error,
+    Interrupted,
 }
 
 pub struct State {

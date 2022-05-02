@@ -32,6 +32,8 @@ pub enum ClientCommand {
     BackTo(Operation),
     /// Show the status of the worker.
     Status,
+    /// Stop interrupting statement processing.
+    StopInterrupt,
 }
 
 /// The type of commands that can be sent back to Kakoune.

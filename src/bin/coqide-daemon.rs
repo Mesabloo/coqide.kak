@@ -7,13 +7,19 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use daemon::client::bridge::ClientBridge;
-use daemon::coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor};
 use daemon::files::{goal_file, log_file, result_file};
 use daemon::kakoune::{command_line::kak, ui_updater::KakouneUIUpdater};
 use daemon::logger;
 use daemon::session::{edited_file, session_id, temporary_folder, Session};
 use daemon::state::State;
+use daemon::{
+    client::commands::types::ClientCommand,
+    coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor},
+};
+use daemon::{
+    client::{bridge::ClientBridge, commands::types::DisplayCommand},
+    state::ErrorState,
+};
 
 use tokio::{fs::File, sync::watch};
 
@@ -53,7 +59,7 @@ async fn main() {
         let mut stop_rx1 = stop_rx.clone();
         let stop_rx2 = stop_rx.clone();
         tokio::select! {
-            Ok(_) = stop_rx1.changed() => break Ok(()),
+            Ok(_) = stop_rx1.changed() => break Ok::<_, io::Error>(()),
             res = main_loop(stop_rx2, stop_tx, session.clone()) => break res,
         }
     };
@@ -93,17 +99,40 @@ async fn main_loop(
 
         ui_updater.process(display3.into_iter().collect()).await?;
         if let Some(call) = call {
-            let (response, feedback) = coqtop_bridge.ask(call).await?;
+            let result = coqtop_bridge.ask(call).await;
+            match result {
+                Ok((response, feedback)) => {
+                    let mut display2 = coqtop_processor.process_feedback(feedback).await?;
+                    let mut display = coqtop_processor.process_response(response, cmd).await?;
 
-            let mut display2 = coqtop_processor.process_feedback(feedback).await?;
-            let mut display = coqtop_processor.process_response(response, cmd).await?;
+                    // When we receive some feedback, we want to process it first.
+                    // In any case, this will not change the global application state, compared
+                    // to processing a response.
+                    display.append(&mut display2);
 
-            // When we receive some feedback, we want to process it first.
-            // In any case, this will not change the global application state, compared
-            // to processing a response.
-            display.append(&mut display2);
+                    ui_updater.process(display).await?;
+                }
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => {
+                    log::warn!("Interrupting current processing");
 
-            ui_updater.process(display).await?;
+                    state.write().unwrap().error_state = ErrorState::Interrupted;
+
+                    if let ClientCommand::Next(_, range, _) = cmd {
+                        ui_updater
+                            .process(
+                                vec![
+                                    DisplayCommand::RemoveToBeProcessed(range),
+                                    DisplayCommand::RemoveProcessed(range),
+                                    DisplayCommand::RemoveAxiom(range),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            )
+                            .await?;
+                    }
+                }
+                Err(err) => break Err(err),
+            }
         }
     }
 }

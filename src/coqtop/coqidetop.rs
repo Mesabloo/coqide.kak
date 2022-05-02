@@ -1,9 +1,11 @@
 use std::{collections::VecDeque, io, process::Stdio, sync::Arc};
 
+use async_signals::Signals;
 use tokio::{
     io::AsyncWriteExt,
     process::{Child, ChildStdin, ChildStdout, Command},
 };
+use tokio_stream::StreamExt;
 use tokio_util::codec::FramedRead;
 
 use crate::{
@@ -89,13 +91,22 @@ impl CoqIdeTop {
         self.main_w.write_all(encoded.as_bytes()).await?;
 
         let mut feedback = VecDeque::new();
-        loop {
-            let response = ProtocolResult::decode_stream(&mut self.reader).await?;
+        let mut signals = Signals::new(vec![libc::SIGUSR1])?;
 
-            if response.is_feedback() {
-                feedback.push_back(response);
-            } else {
-                break Ok((response, feedback));
+        loop {
+            tokio::select! {
+                Some(libc::SIGUSR1) = signals.next() => {
+                    unsafe { libc::kill(self._process.id().unwrap() as i32, libc::SIGINT) };
+
+                    break Err(io::Error::new(io::ErrorKind::Interrupted, "Processing of Coq statement has been interrupted"));
+                }
+                Ok(response) = ProtocolResult::decode_stream(&mut self.reader) => {
+                    if response.is_feedback() {
+                        feedback.push_back(response);
+                    } else {
+                        break Ok((response, feedback));
+                    }
+                }
             }
         }
     }

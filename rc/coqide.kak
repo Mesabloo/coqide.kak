@@ -734,7 +734,16 @@ define-command -docstring '
 
 ##################################################################
 
-  define-command -docstring '
+define-command -docstring '
+  Interrupt processing of the current Coq statement.
+' -params 0 coqide-interrupt %{
+  try %sh{
+    kill -USR1 "$kak_opt_coqide_pid" || true
+  }
+  coqide-send-command "stop-interrupt"
+}
+
+define-command -docstring '
   Quit CoqIDE.
 ' -params 0 coqide-stop %{
   evaluate-commands %sh{

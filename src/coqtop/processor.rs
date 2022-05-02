@@ -105,6 +105,11 @@ impl CoqIdeTopProcessor {
                                     None => {}
                                 }
                             }
+                            FeedbackContent::Processed => {
+                                if let Some(range) = self.find_range(state_id) {
+                                    commands.push_back(DisplayCommand::AddToProcessed(range));
+                                }
+                            }
                             _ => {
                                 log::debug!("Received feedback object @{}: {:?}", state_id, content)
                             }
@@ -226,7 +231,7 @@ impl CoqIdeTopProcessor {
                         append,
                     ));
                     commands.push_back(DisplayCommand::RefreshErrorRange(None, false));
-                    commands.push_back(DisplayCommand::AddToProcessed(range));
+                    // commands.push_back(DisplayCommand::AddToProcessed(range));
                 }
                 (Optional(None), ClientCommand::ShowGoals(_)) => {
                     commands.push_back(DisplayCommand::OutputGoals(vec![], vec![], vec![], vec![]));
@@ -251,7 +256,7 @@ impl CoqIdeTopProcessor {
 
                     commands.push_back(DisplayCommand::ShowStatus(path.join("."), proof_name));
                 }
-                (_, _) => todo!(),
+                (_, _) => {}
             },
             ProtocolResult::Fail(_, _, StateId(safe_state_id), message) => match command {
                 ClientCommand::Init => todo!(),

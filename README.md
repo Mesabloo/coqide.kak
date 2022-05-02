@@ -82,6 +82,7 @@ The rest of the procedure is already described above.
 - `coqide-goto-tip` moves the cursor to the tip.
 - `coqide-enable-gutter-symbols` enables the display of little symbols in the gutter to be more visual about errors/axioms.
 - `coqide-disable-gutter-symbols` disables the above-mentioned display of symbols in the gutter.
+- `coqide-interrupt` allows interrupting the processing of the current (and next) Coq statement.
 
 Additional functionality:
 - This plugin will also automatically backtrack to the cursor when an insertion is detected before the end of the processed range.
@@ -157,7 +158,6 @@ Here are some erroneous or incomplete features:
 - `coqide-makefile` to generate a `CoqMakefile` just as CoqIDE (using `coq_makefile`).
 - The whole codebase (mainly the Rust code) lacks documentation.
   This is crucial.
-- We need a way to interrupt the processing of a Coq statement if it takes too long.
 - :warning: Bugs are yet to be found! If you find any, please report them.
 
 If you feel like it, feel free to improve this plugin by forking this repository and submitting your patches through pull requests.

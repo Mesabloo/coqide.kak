@@ -95,6 +95,7 @@ impl ClientBridge {
         let error_state = self.state.read().unwrap().error_state;
 
         match command {
+            ClientCommand::StopInterrupt => self.process_stop_interrupt(),
             ClientCommand::Init => self.process_init(),
             ClientCommand::Quit => self.process_quit(),
             ClientCommand::Previous => self.process_previous(),
@@ -269,5 +270,13 @@ impl ClientBridge {
         }
 
         Ok((None, ClientCommand::MoveTo(ranges), vec![]))
+    }
+
+    fn process_stop_interrupt(
+        &mut self,
+    ) -> io::Result<(Option<ProtocolCall>, ClientCommand, Vec<DisplayCommand>)> {
+        self.state.write().unwrap().error_state = ErrorState::Ok;
+
+        Ok((None, ClientCommand::StopInterrupt, vec![]))
     }
 }

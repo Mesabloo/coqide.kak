@@ -7,19 +7,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use daemon::coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor};
 use daemon::files::{goal_file, log_file, result_file};
 use daemon::kakoune::{command_line::kak, ui_updater::KakouneUIUpdater};
 use daemon::logger;
 use daemon::session::{edited_file, session_id, temporary_folder, Session};
 use daemon::state::State;
-use daemon::{
-    client::commands::types::ClientCommand,
-    coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor},
-};
-use daemon::{
-    client::{bridge::ClientBridge, commands::types::DisplayCommand},
-    state::ErrorState,
-};
+use daemon::{client::bridge::ClientBridge, state::ErrorState};
 
 use tokio::{fs::File, sync::watch};
 
@@ -116,20 +110,6 @@ async fn main_loop(
                     log::warn!("Interrupting current processing");
 
                     state.write().unwrap().error_state = ErrorState::Interrupted;
-
-                    if let ClientCommand::Next(_, range, _) = cmd {
-                        ui_updater
-                            .process(
-                                vec![
-                                    DisplayCommand::RemoveToBeProcessed(range),
-                                    DisplayCommand::RemoveProcessed(range),
-                                    DisplayCommand::RemoveAxiom(range),
-                                ]
-                                .into_iter()
-                                .collect(),
-                            )
-                            .await?;
-                    }
                 }
                 Err(err) => break Err(err),
             }

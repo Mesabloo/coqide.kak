@@ -271,8 +271,13 @@ impl CoqIdeTopProcessor {
                     self.handle_error(Some(range), message, false, &mut commands)
                         .await?;
                 }
-                c => {
-                    log::error!("Unknown failing command {:?}", c);
+                _ => {
+                    if safe_state_id > 0 {
+                        self.discard_states_until(safe_state_id, &mut commands)
+                            .await?;
+                    }
+                    self.handle_error(None, message, false, &mut commands)
+                        .await?;
                 }
             },
             ProtocolResult::Fail(_, _, _, _) => unreachable!(),

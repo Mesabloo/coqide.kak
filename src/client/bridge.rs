@@ -98,8 +98,12 @@ impl ClientBridge {
             ClientCommand::StopInterrupt => self.process_stop_interrupt(),
             ClientCommand::Init => self.process_init(),
             ClientCommand::Quit => self.process_quit(),
-            ClientCommand::Previous => self.process_previous(),
-            ClientCommand::RewindTo(line, column) => self.process_rewind_to(line, column),
+            ClientCommand::Previous if error_state != ErrorState::Interrupted => {
+                self.process_previous()
+            }
+            ClientCommand::RewindTo(line, column) if error_state != ErrorState::Interrupted => {
+                self.process_rewind_to(line, column)
+            }
             ClientCommand::Query(_) => todo!(),
             ClientCommand::MoveTo(ranges) if error_state == ErrorState::Ok => {
                 self.process_move_to(ranges)
@@ -111,7 +115,9 @@ impl ClientBridge {
                 self.process_ignore_error()
             }
             ClientCommand::Hints => todo!(),
-            ClientCommand::ShowGoals(range) => self.process_show_goals(range),
+            ClientCommand::ShowGoals(range) if error_state != ErrorState::Interrupted => {
+                self.process_show_goals(range)
+            }
             ClientCommand::BackTo(op) => self.process_back_to(op),
             ClientCommand::Next(append, range, code) => Ok((
                 None,

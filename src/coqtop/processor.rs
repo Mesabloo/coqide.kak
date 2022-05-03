@@ -106,6 +106,11 @@ impl CoqIdeTopProcessor {
                                 }
                             }
                             FeedbackContent::Processed => {
+                                log::debug!(
+                                    "Currently known states: {:?}",
+                                    self.state.read().unwrap().operations
+                                );
+
                                 if let Some(range) = self.find_range(state_id) {
                                     commands.push_back(DisplayCommand::AddToProcessed(range));
                                 }
@@ -194,12 +199,14 @@ impl CoqIdeTopProcessor {
                         ops_to_remove
                     };
 
-                    if error_state == ErrorState::Ok {
+                    if error_state != ErrorState::Error {
                         commands.push_back(DisplayCommand::RefreshErrorRange(None, false));
-                        commands.push_back(DisplayCommand::ColorResult(
-                            ProtocolRichPP::RichPP(vec![]),
-                            false,
-                        ));
+                        if error_state == ErrorState::Ok {
+                            commands.push_back(DisplayCommand::ColorResult(
+                                ProtocolRichPP::RichPP(vec![]),
+                                false,
+                            ));
+                        }
                     }
                     for op in to_remove {
                         commands.push_back(DisplayCommand::RemoveProcessed(op.range));
@@ -256,20 +263,30 @@ impl CoqIdeTopProcessor {
 
                     commands.push_back(DisplayCommand::ShowStatus(path.join("."), proof_name));
                 }
-                (_, _) => {}
+                (r, _) => {
+                    log::warn!("Unhandled response {:?}", r);
+                }
             },
             ProtocolResult::Fail(_, _, StateId(safe_state_id), message) => match command {
                 ClientCommand::Init => todo!(),
                 ClientCommand::Query(_) => todo!(),
-                ClientCommand::Next(_, range, _)
-                | ClientCommand::ShowGoals(range)
-                | ClientCommand::BackTo(Operation { range, .. }) => {
+                ClientCommand::Next(_, range, _) | ClientCommand::ShowGoals(range) => {
                     if safe_state_id > 0 {
                         self.discard_states_until(safe_state_id, &mut commands)
                             .await?;
                     }
                     self.handle_error(Some(range), message, false, &mut commands)
                         .await?;
+                }
+                ClientCommand::BackTo(Operation { range, state_id }) => {
+                    if state_id != safe_state_id {
+                        if safe_state_id > 0 {
+                            self.discard_states_until(safe_state_id, &mut commands)
+                                .await?;
+                        }
+                        self.handle_error(Some(range), message, false, &mut commands)
+                            .await?;
+                    }
                 }
                 _ => {
                     if safe_state_id > 0 {

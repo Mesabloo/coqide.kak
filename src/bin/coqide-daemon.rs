@@ -7,13 +7,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use daemon::coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor};
 use daemon::files::{goal_file, log_file, result_file};
 use daemon::kakoune::{command_line::kak, ui_updater::KakouneUIUpdater};
 use daemon::logger;
 use daemon::session::{edited_file, session_id, temporary_folder, Session};
 use daemon::state::State;
 use daemon::{client::bridge::ClientBridge, state::ErrorState};
+use daemon::{
+    client::commands::types::ClientCommand,
+    coqtop::{coqidetop::CoqIdeTop, processor::CoqIdeTopProcessor},
+};
 
 use tokio::{fs::File, sync::watch};
 
@@ -96,10 +99,10 @@ async fn main_loop(
             let result = coqtop_bridge.ask(call).await;
             match result {
                 Ok((response, feedback)) => {
-                    let mut display2 = coqtop_processor.process_feedback(feedback).await?;
                     let mut display = coqtop_processor.process_response(response, cmd).await?;
+                    let mut display2 = coqtop_processor.process_feedback(feedback).await?;
 
-                    // When we receive some feedback, we want to process it first.
+                    // When we receive some feedback, we want to process it last.
                     // In any case, this will not change the global application state, compared
                     // to processing a response.
                     display.append(&mut display2);
